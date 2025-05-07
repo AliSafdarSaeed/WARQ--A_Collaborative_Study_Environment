@@ -1,22 +1,19 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+require("dotenv").config();
 
-// Load environment variables
-dotenv.config();
+const projectRoutes = require("./routes/projectRoutes");
 
 const app = express();
-
-// Middleware to parse JSON requests
+app.use(cors());
 app.use(express.json());
 
-// Simple API route
-app.get('/api', (req, res) => {
-  res.send('Hello from the server!');
-});
+app.use("/api/projects", projectRoutes);
 
-// Start the server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+mongoose.connect(process.env.MONGO_URI, () => {
+  console.log("✅ Connected to MongoDB");
+  app.listen(process.env.PORT || 5000, () =>
+    console.log(`🚀 Server running on port ${process.env.PORT || 5000}`)
+  );
 });

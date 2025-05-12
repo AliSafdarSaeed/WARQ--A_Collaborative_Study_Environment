@@ -6,23 +6,44 @@ yarn-error.log*
 
 # dotenv
 .env
+frontend/.env
+backend/.env
 
-# node
+# node_modules
 node_modules/
+frontend/node_modules/
+backend/node_modules/
 
 # Firebase key
 firebase/firebaseServiceKey.json
 
 # React build
 frontend/build/
-frontend/node_modules/
-frontend/.env
 
-# Backend node_modules
-backend/node_modules/
-backend/.env
+# Coverage reports
+coverage/
 
-# Mac system files
+# Testing
+/coverage
+/frontend/coverage
+
+# Miscellaneous
 .DS_Store
 Thumbs.db
-.DS_Store?
+
+# IDE-specific files
+.vscode/
+.idea/
+*.swp
+
+# Production
+/build
+/frontend/build
+
+# Temporary files
+*.tmp
+*.temp
+
+# Lock files
+package-lock.json
+yarn.lock

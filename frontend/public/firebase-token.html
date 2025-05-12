@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebase Token Generator</title>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"></script>
+</head>
+<body>
+  <h1>Firebase Token Generator</h1>
+  <form id="loginForm">
+    <input type="email" id="email" placeholder="Email" required />
+    <input type="password" id="password" placeholder="Password" required />
+    <button type="submit">Login</button>
+  </form>
+  <p id="token"></p>
+
+  <script>
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyBkg4IiTxGA1y4hqfOVAD98FZ7zDErc6n8",
+      authDomain: "warq-25.firebaseapp.com",
+      projectId: "warq-25",
+      storageBucket: "warq-25.firebasestorage.app",
+      messagingSenderId: "393488363197",
+      appId: "1:393488363197:web:adb54d84ab06bced9ed1d4",
+      measurementId: "G-8RW7QHDTMB"
+    };
+
+    // Initialize Firebase
+    const app = firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    // Handle login form submission
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      try {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const token = await userCredential.user.getIdToken();
+        document.getElementById("token").textContent = `Firebase Token: ${token}`;
+        console.log("Firebase Token:", token);
+      } catch (error) {
+        console.error("Error logging in:", error);
+        alert("Login failed. Check the console for details.");
+      }
+    });
+  </script>
+</body>
+</html>
+

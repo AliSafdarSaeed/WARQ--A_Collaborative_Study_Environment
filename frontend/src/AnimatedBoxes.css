@@ -1,0 +1,171 @@
+.animated-boxes-section {
+  padding: 0px 0;
+  padding-bottom: 50px;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+  background-color: black;
+  z-index: 1;
+}
+
+.animated-boxes-section::before,
+.animated-boxes-section::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 150px; /* Adjust as needed */
+  z-index: 2;
+  pointer-events: none;
+}
+
+.animated-boxes-section::before {
+  left: 0;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.95) 40%, transparent 100%);
+}
+
+.animated-boxes-section::after {
+  right: 0;
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.95) 40%, transparent 100%);
+}
+
+
+.section-title {
+  text-align: center;
+  margin-bottom: 40px;
+  font-size: 2.5rem;
+  color: #333;
+}
+
+.animated-boxes-container {
+  display: flex;
+  flex-wrap: nowrap; /* Prevents wrapping of the entire row */
+  overflow: hidden; /* Hides overflowing boxes when they move */
+  gap: 20px; /* Adds space between boxes */
+}
+
+.animated-box-row {
+  display: flex;
+  gap: 50px;
+  animation: moveRow 40s linear infinite;
+}
+
+.animated-box {
+  display: inline-block;
+  padding: 20px;
+  border-radius: 25px;
+  background-color: black;
+  transition: transform 0.3s ease-out;
+  white-space: nowrap;
+  border: 2px solid #333;
+  min-width: 250px;
+  max-width: 250px;
+  max-height: 150px;
+  min-height: 150px;
+
+}
+.box-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  width: 24px;
+  height: 24px;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #47e584
+}
+
+hr {
+  margin: 4px 0;
+  border: none;
+  border-top: 2px solid #333; /* Replace #999 with any color */
+}
+
+.box-description {
+  padding-top: 10px;
+  padding-bottom: 5px;
+  font-size: 18px;
+  color: #ababab;
+  line-height: 1.2;
+  text-align: left;
+  white-space: normal;         /* allow wrapping */
+  word-break: normal;          /* don't break words */
+  overflow-wrap: normal;       /* wrap only at spaces */
+}
+/* Optional: Add margin to prevent tight edges on first and last boxes */
+.animated-box:first-child {
+  margin-left: 15px; /* Adds space to the first box */
+}
+
+.animated-box:last-child {
+  margin-right: 15px; /* Adds space to the last box */
+}
+.animated-box h3 {
+  margin-top: 0;
+  font-size: 20px;
+  color: #47e584;
+}
+
+/* Animating the rows */
+@keyframes moveRow {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+/* Add duplicate row for continuous wrap-around effect */
+.animated-box-row-wrapper {
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+}
+
+.animated-box-row-wrapper .animated-box-row {
+  display: flex;
+  gap: 30px;
+  width: 200%; /* Duplicate the row to create seamless effect */
+}
+
+/* Animating to move seamlessly */
+@keyframes moveRowWrapper {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@media (max-width: 768px) {
+  .animated-box {
+    flex: 1 1 100%;
+  }
+
+  .section-title {
+    font-size: 2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .animated-boxes-section {
+    padding: 50px 0;
+  }
+
+  .animated-box {
+    width: 95%;
+  }
+
+  .section-title {
+    font-size: 1.75rem;
+    margin-bottom: 40px;
+  }
+}

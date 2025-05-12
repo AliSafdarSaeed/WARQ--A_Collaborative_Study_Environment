@@ -1,0 +1,146 @@
+:root {
+  --main-bg-color: #151515;  /* Cold black color */
+}
+
+
+/* Fill the full screen, no scrolling */
+.dashboard-container {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Body is the remaining 90% */
+.dashboard-body {
+  height: 100vh;
+  display: flex;
+  background-color: var(--main-bg-color);
+  padding: 10px;
+}
+
+/* Sidebar takes 20% width */
+.dashboard-sidebar {
+  width: 25vw;
+  background-color: var(--main-bg-color);
+  color: #f0f0f0;  /* Light text */
+  padding: 2vh 1vw;
+}
+.heading {
+  display: flex;              /* Enable flexbox layout */
+  justify-content: space-between; /* Distribute elements horizontally */
+  width: 100%;                 /* Take the full width of the parent */
+  height: 10%;                  /* Set height as a percentage of parent */
+  padding: 0.5rem 0rem;        /* Adjusted padding */
+  align-items: center;         /* Vertically align children (logo + text) */
+}
+
+.prev-notes {
+    display: flex;             /* Enable flexbox layout */
+    justify-content: space-between; /* Distribute elements horizontally */
+    width: 100%;               /* Take the full width of the parent */
+    height: 70%;               /* Take 50% of the parent's height */
+    border: 2px solid #47e584; /* Darker border for the heading */
+    border-radius: 10px;
+    margin-bottom: 10px;;
+}
+.footing {
+  display: flex;              /* Enable flexbox layout */
+  justify-content: space-between; /* Distribute elements horizontally */
+  width: 100%;                 /* Take the full width of the parent */
+  height: 10%;                  /* Set height as a percentage of parent */
+  padding: 0.5rem 0rem;        /* Adjusted padding */
+  align-items: center;         /* Vertically align children (logo + text) */
+}
+
+/* Main content takes 80% width */
+.dashboard-main {
+  width: 75vw;
+  background-color: var(--main-bg-color);
+  color: #f0f0f0;  /* Light text */
+  padding: 2vh 2vw;
+  overflow: auto; /* only allow scroll here if needed */
+}
+.editor-wrapper {
+  padding: 2vh 2vw;
+  border-radius: 10px;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: rgba(0, 0, 0, 1) 0px 0px 15px 5px;
+  background-color: #1a1a1a; /* Optional inner dark background */
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+/* Container for file name and save text */
+.file-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* File name on the left */
+.file-name {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+/* Save text on the right */
+.save-text {
+  font-size: 1rem;
+  color: gray; /* Blue color for the save button */
+  cursor: pointer;
+  font-weight: 500;
+  padding: 0.5vh 1vw;
+  border: 2px solid #47e584;
+  border-radius: 5px;
+}
+
+/* Horizontal separator line */
+.separator {
+  border: 0;
+  border-top: 1px solid #444; /* Darker line for separation */
+}
+.rich-text-editor {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  font-size: 1.2rem;
+  line-height: 1.6;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  outline: none;
+  position: relative; /* This is crucial for placeholder */
+}
+
+
+/* Editor content wrapper (necessary for placeholder placement) */
+.editor-content {
+  position: relative;
+  z-index: 1; /* Ensure content is above the placeholder */
+}
+.placeholder {
+  color: #888;
+  font-style: italic;
+  position: absolute;
+  
+  pointer-events: none;
+}
+.rich-text-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #888;
+  font-style: italic;
+  position: absolute;
+  pointer-events: none;
+}
+
+/* When content is typed, hide the placeholder */
+.rich-text-editor .placeholder.hidden {
+  display: none;
+}
+/* Chrome, Safari, and Edge */
+.rich-text-editor::-webkit-scrollbar {
+  display: none;
+}

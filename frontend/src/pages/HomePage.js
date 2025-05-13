@@ -40,8 +40,8 @@ const HomePage = () => {
         <br />
         {/* You can add more sections below */}
         <h1 className="headings">Not your everyday text-editor!</h1>
-        <div class="feature_box">
-          <div class="feature-box-item">
+        <div className="feature_box">
+          <div className="feature-box-item">
             
             <img src={features} alt="Design Logo" className="widget" />
             <div className="box-header">
@@ -53,7 +53,7 @@ const HomePage = () => {
 
           </div>
           </div>
-          <div class="feature-box-item">
+          <div className="feature-box-item">
             
             <img src={group} alt="Design Logo" className="widget" />
             <div className="box-header">
@@ -65,7 +65,7 @@ const HomePage = () => {
 
           </div>
           </div>
-          <div class="feature-box-item">
+          <div className="feature-box-item">
             <img src={shuttle} alt="Design Logo" className="widget" />
             <div className="box-header">
             
@@ -78,7 +78,7 @@ const HomePage = () => {
 
           </div>
           </div>
-          <div class="feature-box-item">
+          <div className="feature-box-item">
             <img src={progressBar} alt="Design Logo" className="widget" />
             <div className="box-header">
             
@@ -91,7 +91,7 @@ const HomePage = () => {
           </div>
           </div>
         </div>
-        <div class="team-heading">
+        <div className="team-heading">
           <h2 style={{fontSize: '100px'}}>Team behind  </h2>
           <span className="warq-logo-container" style={{fontSize: '100px'}}>WARQ</span>
         </div>

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import '../App.css';
+import { signup } from '../services/api';
+import Spinner from '../components/Spinner';
 
 const SignUpPage = () => {
   const [formData, setFormData] = useState({
@@ -7,6 +9,11 @@ const SignUpPage = () => {
     email: '',
     password: ''
   });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [redirecting, setRedirecting] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -16,9 +23,28 @@ const SignUpPage = () => {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Form submitted:', formData);
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      await signup({
+        username: formData.username,
+        email: formData.email,
+        password: formData.password
+      });
+      setSuccess('Signup successful! Redirecting to login...');
+      setFormData({ username: '', email: '', password: '' });
+      setRedirecting(true);
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 1000);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Signup failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -38,6 +64,9 @@ const SignUpPage = () => {
         <div className="signup-right-section">
           <div className="signup-form-container">
             <h2>Sign Up</h2>
+
+            {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+            {success && <div style={{ color: 'green', marginBottom: 8 }}>{success}</div>}
 
             <div className="signup-input-group">
               <input
@@ -75,9 +104,11 @@ const SignUpPage = () => {
             <button
               onClick={handleSubmit}
               className="signup-submit-btn"
+              disabled={loading}
             >
-              Sign Up
+              {loading ? 'Signing Up...' : 'Sign Up'}
             </button>
+            {redirecting && <Spinner />}
           </div>
         </div>
 

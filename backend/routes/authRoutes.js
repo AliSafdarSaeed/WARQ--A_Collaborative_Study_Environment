@@ -1,25 +1,80 @@
 // Auth-related routes
-
 const express = require("express");
 const router = express.Router();
 const { authenticate } = require("../middleware/authMiddleware");
 const User = require("../models/userModel");
-const authController = require("../controllers/authController"); // Auth Controller
+const jwt = require('jsonwebtoken');
+const authController = require("../controllers/authController");
 
-// Login route - no longer needed as auth is handled by Supabase on the frontend
+// Login route - validate Supabase token and return MongoDB user info
 router.post("/login", async (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Please use Supabase authentication in the frontend",
-  });
+  try {
+    const { email, token } = req.body;
+    
+    if (!email || !token) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and token are required",
+      });
+    }
+    
+    // Verify the token is valid (basic validation)
+    const decodedToken = jwt.decode(token);
+    if (!decodedToken || !decodedToken.sub) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token",
+      });
+    }
+    
+    // Find or create the user in MongoDB
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      // Create new user in MongoDB if they don't exist
+      user = new User({
+        email,
+        supabaseUid: decodedToken.sub,
+        name: decodedToken.user_metadata?.name || email.split('@')[0]
+      });
+      await user.save();
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: { user, token }
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Login failed",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
 });
 
-// Register route
+// Register route - store Supabase user in MongoDB
 router.post("/signup", async (req, res) => {
-  const { supabaseUid, email, name } = req.body;
-
   try {
-    // Check if the user already exists
+    const { email, username, token } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+    
+    // Decode the Supabase token if provided
+    let supabaseUid = null;
+    if (token) {
+      const decodedToken = jwt.decode(token);
+      supabaseUid = decodedToken?.sub;
+    }
+    
+    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(200).json({
@@ -28,15 +83,19 @@ router.post("/signup", async (req, res) => {
         data: existingUser,
       });
     }
-
+    
     // Create a new user in MongoDB
-    const newUser = new User({ supabaseUid, email, name });
+    const newUser = new User({
+      email,
+      name: username || email.split('@')[0],
+      supabaseUid
+    });
     await newUser.save();
-
+    
     res.status(201).json({
       success: true,
       message: "User registered successfully",
-      data: newUser,
+      data: { user: newUser, token }
     });
   } catch (error) {
     console.error("Error during registration:", error);

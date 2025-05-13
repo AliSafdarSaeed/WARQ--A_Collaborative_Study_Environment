@@ -16,7 +16,10 @@ connectDB(); // No callback needed
 const io = initializeSocketIO(server);
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:3000', // React dev server
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

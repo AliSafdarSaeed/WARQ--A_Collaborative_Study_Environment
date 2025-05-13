@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -161,16 +162,135 @@ function Dashboard() {
         )}
       </div>
     );
+
+  };
+
+  const handleCreateOrEditNote = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      if (editingNoteId) {
+        await editNote(editingNoteId, { title: noteTitle, content: noteContent });
+        setNotes(notes.map(n => n._id === editingNoteId ? { ...n, title: noteTitle, content: noteContent } : n));
+        setEditingNoteId(null);
+      } else {
+        const res = await createNote({ title: noteTitle, content: noteContent });
+        setNotes([...notes, res.data]);
+      }
+      setNoteTitle('');
+      setNoteContent('');
+    } catch (err) {
+      setError('Failed to save note.');
+    }
+  };
+
+  const handleEdit = (note) => {
+    setEditingNoteId(note._id);
+    setNoteTitle(note.title);
+    setNoteContent(note.content);
+  };
+
+  const handleDelete = async (noteId) => {
+    try {
+      await deleteNote(noteId);
+      setNotes(notes.filter(n => n._id !== noteId));
+    } catch {
+      setError('Failed to delete note.');
+    }
+  };
+
+  const handleMarkCompleted = async (noteId) => {
+    try {
+      await markNoteCompleted({ noteId });
+      setNotes(notes.map(n => n._id === noteId ? { ...n, completed: true } : n));
+    } catch {
+      setError('Failed to mark as completed.');
+    }
+  };
+
+  const handleCreateProject = async (e) => {
+    e.preventDefault();
+    setProjectError('');
+    try {
+      const res = await createProject({ name: projectName });
+      setProjects([...projects, res.data]);
+      setProjectName('');
+    } catch {
+      setProjectError('Failed to create project.');
+    }
+  };
+
+  const handleJoinProject = async (projectId) => {
+    setProjectError('');
+    try {
+      await joinProject({ projectId });
+      setProjectError('Joined project!');
+    } catch {
+      setProjectError('Failed to join project.');
+    }
+  };
+
+  const handleFileUpload = async (e, noteId) => {
+    setFileUploadError('');
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      await addFileToNote(noteId, file);
+      setFileUploadNoteId(null);
+    } catch {
+      setFileUploadError('Failed to upload file.');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    window.location.href = '/login';
+  };
+
+  const handleQuizCreate = async (e) => {
+    e.preventDefault();
+    setQuizError('');
+    try {
+      await createQuiz({ noteId: quizNoteId, question: quizQuestion, options: quizOptions, answer: quizAnswer });
+      setQuizNoteId(null); setQuizQuestion(''); setQuizOptions(['', '', '', '']); setQuizAnswer(0);
+    } catch {
+      setQuizError('Failed to create quiz.');
+    }
+  };
+
+  const handleShowQuizzes = async (noteId) => {
+    setQuizNoteId(noteId);
+    try {
+      const res = await getQuizzesForNote(noteId);
+      setQuizzes(res.data);
+    } catch {
+      setQuizzes([]);
+    }
+  };
+
+  const handleQuizOptionChange = (idx, value) => {
+    setQuizOptions(quizOptions.map((opt, i) => i === idx ? value : opt));
+  };
+
+  const handleQuizSubmit = async (quizId, selected) => {
+    try {
+      const res = await submitQuiz({ quizId, selected });
+      setQuizResult(res.data.result || 'Submitted!');
+    } catch {
+      setQuizResult('Submission failed.');
+    }
   };
 
   return (
     <div className="dashboard-container">
       <div className="dashboard-body">
         <aside className="dashboard-sidebar">
+
           <div className="heading">
             <span className="warq-logo-container" style={{ fontSize: '36px' }}>WARQ</span>
             <div className="image-box" style={{ width: '36px', height: '36px' }}>
               <img src={profileButton} alt="Icon" className="info-image" />
+
             </div>
           </div>
 <div className="prev-notes">
@@ -253,6 +373,7 @@ function Dashboard() {
             <div className="rich-text-editor dark-editor">
               <EditorContent editor={editor} />
             </div>
+
           </div>
         </main>
       </div>

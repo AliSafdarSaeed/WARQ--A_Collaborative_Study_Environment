@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import '../App.css';
+import { login } from '../services/api';
+import Spinner from '../components/Spinner';
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [redirecting, setRedirecting] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -15,9 +20,26 @@ const LoginPage = () => {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Login submitted:', formData);
+    setLoading(true);
+    setError('');
+    try {
+      const res = await login(formData.email, formData.password);
+      if (res.data && res.data.token) {
+        localStorage.setItem('token', res.data.token);
+        setRedirecting(true);
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 1000);
+      } else {
+        setError('No token received.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Login failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -60,16 +82,20 @@ const LoginPage = () => {
               />
             </div>
 
+            {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+
             <button
               onClick={handleSubmit}
               className="signup-submit-btn"
+              disabled={loading}
             >
-              Log In
+              {loading ? 'Logging In...' : 'Log In'}
             </button>
           </div>
         </div>
 
       </div>
+      {redirecting && <Spinner />}
     </div>
   );
 };

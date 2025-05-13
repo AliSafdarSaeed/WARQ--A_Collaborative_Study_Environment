@@ -154,7 +154,7 @@ export default API;
 | Member             | Role                                |
 |--------------------|-------------------------------------|
 | Saqib Mahmood      | Backend Dev, React Integration, AI  |
-| Ali Safdar Saeed   | Frontend Dev (HTML/CSS/React)       |
+| Ali Safdar Saeed   | Frontend Dev (HTML/CSS/React, Chat Feature)       |
 | Qura tul Ain       | Firebase Auth & Firestore           |
 
 ---

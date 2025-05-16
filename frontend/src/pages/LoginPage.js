@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import '../App.css';
 import { login } from '../services/api';
 import Spinner from '../components/Spinner';
+import { supabase } from '../services/supabase';
+import { useNavigate } from 'react-router-dom';
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
@@ -11,6 +13,7 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [redirecting, setRedirecting] = useState(false);
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -25,15 +28,27 @@ const LoginPage = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await login(formData.email, formData.password);
-      if (res.data && res.data.token) {
-        localStorage.setItem('token', res.data.token);
-        setRedirecting(true);
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 1000);
+      // Supabase login
+      const { data, error: supabaseError } = await supabase.auth.signInWithPassword({ email: formData.email, password: formData.password });
+      if (supabaseError) {
+        setError(supabaseError.message);
+        setLoading(false);
+        return;
+      }
+      // Get Supabase access token
+      const supabaseToken = data?.session?.access_token;
+      if (!supabaseToken) {
+        setError('No Supabase session token received.');
+        setLoading(false);
+        return;
+      }
+      // Call backend login to get backend JWT and user info
+      const backendRes = await login(formData.email, undefined, supabaseToken);
+      if (backendRes.data && backendRes.data.data && backendRes.data.data.token) {
+        localStorage.setItem('token', backendRes.data.data.token);
+        navigate('/dashboard');
       } else {
-        setError('No token received.');
+        setError('Login failed: No backend token received.');
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed.');

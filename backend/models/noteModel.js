@@ -12,29 +12,19 @@ const fileSchema = new mongoose.Schema({
 // Define the note schema
 const noteSchema = new mongoose.Schema({
   title: { type: String, required: true },
-  content: String,
+  content: { type: String, required: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   projectId: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "Project",
-    // Make projectId optional for file uploads
     required: function() {
-      // Only require projectId for new notes, not for file uploads to existing notes
       return this.isNew && !this._id;
     }
   },
   tags: [String],
-  createdBy: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "User", 
-    required: function() {
-      // Only require createdBy for new notes, not for file uploads to existing notes
-      return this.isNew && !this._id;
-    }
-  },
   summary: String, 
   files: [fileSchema], // Use the file schema for the files array
-  createdAt: { type: Date, default: Date.now },
-}, { collection: "notes" });
+}, { timestamps: true, collection: "notes" });
 
 // Validate files field on save
 noteSchema.pre('save', function(next) {

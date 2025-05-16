@@ -12,7 +12,7 @@ exports.createNote = async (req, res) => {
       content,
       projectId,
       tags,
-      createdBy: req.user._id,
+      user: req.user._id, // Changed from createdBy to user to match the model
     });
     res.status(201).json({ success: true, data: note });
   } catch (error) {

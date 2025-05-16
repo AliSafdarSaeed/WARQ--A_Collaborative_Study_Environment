@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import '../App.css';
-import { signup } from '../services/api';
+import { supabase } from '../services/supabase';
+import API from '../services/api';
+import { useNavigate } from 'react-router-dom';
 import Spinner from '../components/Spinner';
 
 const SignUpPage = () => {
   const [formData, setFormData] = useState({
-    username: '',
+    name: '', // Collect name directly
     email: '',
     password: ''
   });
@@ -14,6 +16,7 @@ const SignUpPage = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [redirecting, setRedirecting] = useState(false);
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -28,20 +31,56 @@ const SignUpPage = () => {
     setLoading(true);
     setError('');
     setSuccess('');
+
     try {
-      await signup({
-        username: formData.username,
+      // Supabase signup
+      const { data, error: supabaseError } = await supabase.auth.signUp({
         email: formData.email,
-        password: formData.password
+        password: formData.password,
+        options: {
+          data: {
+            name: formData.name // Send name to Supabase
+          },
+          emailRedirectTo: window.location.origin + '/login'
+        }
       });
-      setSuccess('Signup successful! Redirecting to login...');
-      setFormData({ username: '', email: '', password: '' });
+
+      if (supabaseError) {
+        setError(supabaseError.message || 'Signup failed.');
+        setLoading(false);
+        return;
+      }
+
+      console.log("Supabase signup response:", data);
+
+      // Only proceed if session exists (user is auto-confirmed)
+      const supabaseToken = data?.session?.access_token;
+      if (supabaseToken) {
+        localStorage.setItem('token', supabaseToken);
+
+        // Call backend to save name and supabaseUid in MongoDB
+        if (data?.user?.id) {
+          await API.post('/auth/app-profile', {
+            supabaseUid: data.user.id,
+            name: formData.name
+          });
+          console.log("User profile saved in MongoDB");
+        }
+        setSuccess('Signup successful! You are now logged in.');
+      } else {
+        setSuccess('Signup successful! Please check your email to confirm your account before logging in.');
+      }
+
+      setFormData({ name: '', email: '', password: '' });
+
+      // Redirect to login
       setRedirecting(true);
       setTimeout(() => {
-        window.location.href = '/login';
-      }, 1000);
+        navigate('/login');
+      }, 2000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Signup failed.');
+      console.error("Signup error:", err);
+      setError(err.message || 'Signup failed due to an unexpected error.');
     } finally {
       setLoading(false);
     }
@@ -50,35 +89,26 @@ const SignUpPage = () => {
   return (
     <div className="signup-page">
       <div className="signup-container">
-        
-        {/* Left Section - Site Heading */}
         <div className="signup-left-section">
-          <span className="warq-logo-container" style={{ fontSize: '80px',marginBottom: '15px'}}>WARQ</span>
+          <span className="warq-logo-container" style={{ fontSize: '80px', marginBottom: '15px' }}>WARQ</span>
           <h3>Sign Up and Join Our Community!</h3>
         </div>
-
-        {/* Vertical Divider */}
         <div className="signup-divider"></div>
-
-        {/* Right Section - Sign Up Form */}
         <div className="signup-right-section">
           <div className="signup-form-container">
             <h2>Sign Up</h2>
-
             {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
             {success && <div style={{ color: 'green', marginBottom: 8 }}>{success}</div>}
-
             <div className="signup-input-group">
               <input
                 type="text"
-                placeholder="Username"
-                name="username"
-                value={formData.username}
+                placeholder="Name"
+                name="name"
+                value={formData.name}
                 onChange={handleChange}
                 required
               />
             </div>
-
             <div className="signup-input-group">
               <input
                 type="email"
@@ -89,7 +119,6 @@ const SignUpPage = () => {
                 required
               />
             </div>
-
             <div className="signup-input-group">
               <input
                 type="password"
@@ -98,9 +127,9 @@ const SignUpPage = () => {
                 value={formData.password}
                 onChange={handleChange}
                 required
+                minLength="6"
               />
             </div>
-
             <button
               onClick={handleSubmit}
               className="signup-submit-btn"
@@ -111,8 +140,7 @@ const SignUpPage = () => {
             {redirecting && <Spinner />}
           </div>
         </div>
-
-      </div> {/* ✅ Correct placement of this closing div */}
+      </div>
     </div>
   );
 };

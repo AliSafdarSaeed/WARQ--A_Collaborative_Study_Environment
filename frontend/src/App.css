@@ -12,6 +12,7 @@
   align-items: center;
   padding: 20px 60px;
 
+
   background-color: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -49,7 +50,7 @@
 }
 .hero-wrapper {
   text-align: left;
-  padding: 200px 100px 20px 100px;
+  padding: 170px 100px 20px 100px;
 }
 .warq-logo-container {
   color: black;
@@ -89,15 +90,15 @@
   gap: 50px; /* space between items */
   flex-wrap: wrap; /* wraps on small screens */
   padding-top: 80px;
-  padding-bottom: 80px;
-  padding-left: 100px;
-  padding-right: 100px;
+  padding-bottom: 150px;
+  padding-left: 40px;
+  padding-right: 40px;
 }
 
 .feature-box-item {
   
-  min-width: 290px; /* ensures good sizing on small screens */
-  max-width: 290px;
+  min-width: 280px; /* ensures good sizing on small screens */
+  max-width: 280px;
   min-height: 300px;
   max-height: 300px;
   display: flex;
@@ -152,10 +153,10 @@
   gap: 25px;
 }
 .team-member {
-  min-width: 350px;
-  max-width: 350px;
-  min-height: 450px;
-  max-height: 450px;
+  min-width: 370px;
+  max-width: 370px;
+  min-height: 500px;
+  max-height: 500px;
   display: flex;
   flex-direction: column;
   justify-content: flex-start; /* was 'top' — use flex-start */
@@ -166,6 +167,16 @@
   border-radius: 20px;
   position: relative;
   cursor: pointer;
+  transition: all 0.3s ease-in-out;
+  transform: scale(1);
+  box-shadow: none;
+  will-change: transform;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+}
+.team-member:hover {
+  transform: scale(1.05); /* slight zoom */
+  box-shadow: 0 12px 34px rgba(203, 206, 203, 0.7); /* soft shadow */
 }
 
 

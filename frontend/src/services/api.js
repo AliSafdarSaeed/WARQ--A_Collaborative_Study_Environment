@@ -1,23 +1,49 @@
 import axios from "axios";
 
-const API = axios.create({
-  baseURL: (process.env.REACT_APP_API_URL || 'http://localhost:5001') + "/api"
-});
+// Create configurable API instance
+const createAPI = (token = null) => {
+  const instance = axios.create({
+    baseURL: (process.env.REACT_APP_API_URL || 'http://localhost:5001') + "/api"
+  });
 
-API.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+  // Set up request interceptor for authentication
+  instance.interceptors.request.use(
+    (config) => {
+      // Use the provided token first, fall back to localStorage
+      const authToken = token || localStorage.getItem('token');
+      if (authToken) {
+        config.headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      return config;
+    },
+    (error) => Promise.reject(error)
+  );
+
+  // Add response interceptor to handle errors
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      // Handle auth errors
+      if (error.response && error.response.status === 401) {
+        console.warn('Authentication error, you might need to log in again');
+      }
+      return Promise.reject(error);
     }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+  );
+
+  return instance;
+};
+
+// Default instance (will use localStorage token)
+const API = createAPI();
+
+// Allow creating a configured instance with specific token
+export const getConfiguredAPI = (token) => createAPI(token);
 
 // Example: Auth
-export const login = (email, password) =>
-  API.post("/auth/login", { email, password });
+// Enhanced login to support Supabase token
+export const login = (email, password, token) =>
+  API.post("/auth/login", { email, password, token });
 
 // Example: Signup
 export const signup = ({ username, email, password }) =>

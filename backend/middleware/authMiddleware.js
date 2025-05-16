@@ -1,67 +1,33 @@
-const jwt = require('jsonwebtoken');
 const User = require("../models/userModel");
+const axios = require("axios");
 
-const handleSupabaseAuth = async (token) => {
+async function authenticate(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+
   try {
-    // Use SUPABASE_JWT_SECRET to verify the token
-    const decodedToken = jwt.verify(token, process.env.SUPABASE_JWT_SECRET);
-    if (!decodedToken) {
-      console.error("Failed to decode token:", token.substring(0, 20) + "...");
-      return { error: new Error("Invalid token format") };
-    }
-    console.log("Supabase Token decoded:", decodedToken.email);
-    if (!decodedToken.sub) {
-      console.error("Token missing subject ID");
-      return { error: new Error("Invalid token payload") };
-    }
-    const email = decodedToken.email;
-    if (!email) {
-      console.error("Token missing email");
-      return { error: new Error("Token missing email") };
-    }
-    let user = await User.findOne({ email });
-    if (!user) {
-      console.log("Creating new user for email:", email);
-      user = await User.create({
-        email: email,
-        name: decodedToken.user_metadata?.name || email.split('@')[0] || "Supabase User",
-        supabaseUid: decodedToken.sub
-      });
-      console.log("Created user:", user.email);
-    } else {
-      if (!user.supabaseUid) {
-        user.supabaseUid = decodedToken.sub;
-        await user.save();
-        console.log("Updated existing user with supabaseUid:", user.email);
+    // Fetch user info from Supabase
+    const { data: supabaseUser } = await axios.get(
+      `${process.env.SUPABASE_URL}/auth/v1/user`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
+        },
       }
-    }
-    return { user, decodedToken };
-  } catch (error) {
-    console.error("Supabase auth error:", error);
-    return { error };
-  }
-};
+    );
 
-const authenticate = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) {
-      return res.status(401).json({ success: false, message: "No token provided" });
+    // Fetch extra fields (like name, bio, avatarUrl) from MongoDB
+    let userProfile = await User.findOne({ supabaseUid: supabaseUser.id });
+    if (!userProfile) {
+      return res.status(401).json({ error: 'User not found in database' });
     }
-    console.log("Auth token received (first 20 chars):", token.substring(0, 20) + "...");
-    const authResult = await handleSupabaseAuth(token);
-    if (authResult.error) {
-      console.error("Authentication failed:", authResult.error.message);
-      return res.status(401).json({ success: false, message: "Authentication failed" });
-    }
-    req.user = authResult.user;
-    req.token = authResult.decodedToken;
+    req.user = userProfile; // Attach the full MongoDB user document (with _id, etc)
     next();
-  } catch (error) {
-    console.error("Auth middleware error:", error);
-    res.status(401).json({ success: false, message: "Authentication failed" });
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid Supabase token' });
   }
-};
+}
 
 module.exports = { authenticate };
 

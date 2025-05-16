@@ -9,8 +9,16 @@ const connectDB = require("./config/mongodbConfig");
 const app = express();
 const server = http.createServer(app);
 
-// Connect to MongoDB
-connectDB(); // No callback needed
+// Connect to MongoDB - but only log the message in the config file
+// to avoid duplicate messages
+(async () => {
+  try {
+    // Modify connectDB to not log in the config file
+    await connectDB();
+  } catch (err) {
+    console.error("MongoDB connection error:", err);
+  }
+})();
 
 // Initialize Socket.IO
 const io = initializeSocketIO(server);

@@ -1,32 +1,32 @@
 const mongoose = require("mongoose");
 
-// User schema
 const userSchema = new mongoose.Schema({
   supabaseUid: { 
-    type: String,
-    required: true
+    type: String, 
+    required: true, 
+    unique: true 
   },
-  email: { type: String, required: [true, "Please provide an email"], unique: true },
-  name: { type: String, required: [true, "Please provide a name"] },
-  createdAt: { type: Date, default: Date.now },
-  fcmToken: { type: String },
-  progress: {
-    type: Object,
-    default: {
-      notesCompleted: [],
-      quizzesCompleted: [],
-      studyTime: 0 // in minutes
-    }
+  name: { 
+    type: String, 
+    required: true 
   },
-  watched: [{
-    type: mongoose.Schema.Types.ObjectId,
-    refPath: 'watchedModel'
-  }],
-  watchedModel: {
-    type: String,
-    enum: ['Note', 'Project'],
-    default: 'Note'
+  email: { 
+    type: String, 
+    required: true, 
+    unique: true 
+  },
+  createdAt: { 
+    type: Date, 
+    default: Date.now 
   }
 });
 
-module.exports = mongoose.model("User", userSchema);
+// Explicitly define the index we want
+userSchema.index({ supabaseUid: 1 }, { unique: true });
+
+// Create the model
+const User = mongoose.model("User", userSchema);
+
+// Export model
+module.exports = User;
+

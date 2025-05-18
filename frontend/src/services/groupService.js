@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { sendInvitationEmail } from './emailService';
 import { v4 as uuidv4 } from 'uuid';
+import { getInvitationEmailTemplate } from './emailTemplates';
 
 // Create a new group
 export const createGroup = async (name, description = '') => {
@@ -45,7 +46,7 @@ export const createGroup = async (name, description = '') => {
 };
 
 // Send group invitation
-export const inviteToGroup = async (groupId, email) => {
+export const inviteToGroup = async (groupId, email, invitationToken) => {
   try {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
@@ -66,7 +67,7 @@ export const inviteToGroup = async (groupId, email) => {
       .from('users')
       .select('id, email')
       .eq('email', email.toLowerCase())
-      .single();
+      .maybeSingle();
 
     if (userError && userError.code !== 'PGRST116') {
       console.error('Error checking existing user:', userError);
@@ -94,7 +95,7 @@ export const inviteToGroup = async (groupId, email) => {
       .eq('project_id', groupId)
       .eq('invited_email', email.toLowerCase())
       .eq('status', 'pending')
-      .single();
+      .maybeSingle();
 
     if (checkError && checkError.code !== 'PGRST116') {
       console.error('Error checking existing invitation:', checkError);
@@ -165,11 +166,18 @@ export const inviteToGroup = async (groupId, email) => {
 
     } else {
       // Send email invitation only for non-existing users
-      await sendInvitationEmail({
-        toEmail: email,
-        fromEmail: session.user.email,
-        groupName: group.title,
-        invitationToken: invitation_token
+      const acceptUrl = `${window.location.origin}/accept-invitation?token=${invitationToken}`;
+      const inviterName = session.user.user_metadata?.name || session.user.email.split('@')[0];
+      const groupName = group.title;
+      const html = getInvitationEmailTemplate({ groupName, inviterName, acceptUrl });
+      const text = `You've been invited to join ${groupName} on WARQ by ${inviterName}. Accept here: ${acceptUrl}`;
+      await supabase.functions.invoke('send-email', {
+        body: {
+          to: email,
+          subject: `You've been invited to join ${groupName} on WARQ`,
+          text,
+          html
+        }
       });
     }
 

@@ -6,7 +6,7 @@ import { toast } from 'react-hot-toast';
 
 // Helper function to get the network URL
 const getNetworkUrl = () => {
-  return 'http://10.7.42.128:3000';
+  return window.location.origin;
 };
 
 const AcceptInvitation = () => {
@@ -55,7 +55,7 @@ const AcceptInvitation = () => {
 
         // Accept the invitation
         const { data: acceptData, error: acceptError } = await supabase.functions.invoke('accept-invitation', {
-          body: JSON.stringify({ token })
+          body: { token }
         });
 
         if (acceptError) throw acceptError;
@@ -78,7 +78,7 @@ const AcceptInvitation = () => {
         await supabase
           .from('project_members')
           .update({ 
-            status: 'active',
+            status: 'accepted',
             joined_at: new Date().toISOString()
           })
           .eq('project_id', acceptData.groupId)
@@ -129,4 +129,4 @@ const AcceptInvitation = () => {
   return null;
 };
 
-export default AcceptInvitation; 
+export default AcceptInvitation;

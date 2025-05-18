@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { getWelcomeEmailTemplate } from './emailTemplates';
 
 const DEBUG = true;
 const debugLog = (...args) => {
@@ -24,47 +25,10 @@ async function sendEmail(to, subject, text, html) {
 export const sendWelcomeEmail = async ({ toEmail, name }) => {
   debugLog('Preparing welcome email for:', toEmail);
   const dashboardUrl = `${window.location.origin}/dashboard`;
-  
-  const template = {
-    subject: 'Welcome to WARQ!',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h1 style="color: #2C3E50;">Welcome to WARQ!</h1>
-        <p>Hello ${name},</p>
-        <p>Welcome to WARQ - your new collaborative study environment! We're excited to have you join our community.</p>
-        <p>With WARQ, you can:</p>
-        <ul>
-          <li>Create and organize your study notes</li>
-          <li>Collaborate with study groups</li>
-          <li>Use AI-powered study assistance</li>
-          <li>Chat with group members in real-time</li>
-        </ul>
-        <div style="margin: 30px 0;">
-          <a href="${dashboardUrl}" style="background-color: #3498DB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px;">Get Started</a>
-        </div>
-        <p>If you have any questions, feel free to reach out to our support team.</p>
-        <p>Happy studying!</p>
-        <p>The WARQ Team</p>
-      </div>
-    `,
-    text: `Welcome to WARQ, ${name}!
-
-We're excited to have you join our collaborative study environment.
-
-With WARQ, you can:
-- Create and organize your study notes
-- Collaborate with study groups
-- Use AI-powered study assistance
-- Chat with group members in real-time
-
-Visit ${dashboardUrl} to get started.
-
-Happy studying!
-The WARQ Team`
-  };
-
+  const html = getWelcomeEmailTemplate({ name });
+  const text = `Welcome to WARQ, ${name}! We're excited to have you join our collaborative study environment. Visit ${dashboardUrl} to get started.`;
   try {
-    await sendEmail(toEmail, template.subject, template.text, template.html);
+    await sendEmail(toEmail, 'Welcome to WARQ!', text, html);
     debugLog('Welcome email sent successfully');
   } catch (error) {
     console.error('Error sending welcome email:', error);
@@ -126,4 +90,4 @@ The WARQ Team`
     debugLog('Invitation email error details:', { error: error.message, toEmail });
     throw error;
   }
-}; 
+};

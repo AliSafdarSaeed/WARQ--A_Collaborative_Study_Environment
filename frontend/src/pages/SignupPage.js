@@ -8,7 +8,7 @@ import { toast } from 'react-hot-toast';
 
 // Helper function to get the network URL
 const getNetworkUrl = () => {
-  return 'http://10.7.42.128:3000';
+  return window.location.origin;
 };
 
 const SignUpPage = () => {
@@ -143,8 +143,9 @@ const SignUpPage = () => {
       // If there's an invitation token, accept it and get the group ID
       if (invitationToken) {
         try {
+          // Fix: send body as an object, not a string
           const { data: inviteData, error: acceptError } = await supabase.functions.invoke('accept-invitation', {
-            body: JSON.stringify({ token: invitationToken })
+            body: { token: invitationToken }
           });
 
           if (acceptError) throw acceptError;
@@ -172,11 +173,11 @@ const SignUpPage = () => {
             created_at: new Date().toISOString()
           }]);
 
-          // Update member status
+          // Update member status (accept both 'active' and 'accepted')
           await supabase
             .from('project_members')
             .update({ 
-              status: 'active',
+              status: 'accepted',
               joined_at: new Date().toISOString()
             })
             .eq('project_id', groupId)
@@ -189,7 +190,7 @@ const SignUpPage = () => {
         }
       }
 
-      // Send welcome email
+      // Send welcome email (emailService expects to, subject, text, html)
       await sendWelcomeEmail({
         toEmail: formData.email,
         name: formData.name.trim()

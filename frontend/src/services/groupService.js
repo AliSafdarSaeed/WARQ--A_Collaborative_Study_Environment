@@ -46,7 +46,7 @@ export const createGroup = async (name, description = '') => {
 };
 
 // Send group invitation
-export const inviteToGroup = async (groupId, email, invitationToken) => {
+export const inviteToGroup = async (groupId, email) => {
   try {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session) {
@@ -143,7 +143,7 @@ export const inviteToGroup = async (groupId, email, invitationToken) => {
         data: {
           group_id: groupId,
           group_title: group.title,
-          invitation_token: invitation_token
+          invitation_token: invitation.invitation_token
         },
         is_read: false,
         created_at: new Date().toISOString()
@@ -163,26 +163,25 @@ export const inviteToGroup = async (groupId, email, invitationToken) => {
           }
         )
         .subscribe();
-
-    } else {
-      // Send email invitation only for non-existing users
-      const baseUrl = process.env.NODE_ENV === 'production'
-        ? 'https://warq-study-platform.vercel.app'
-        : window.location.origin;
-      const acceptUrl = `${baseUrl}/signup?token=${invitationToken}`;
-      const inviterName = session.user.user_metadata?.name || session.user.email.split('@')[0];
-      const groupName = group.title;
-      const html = getInvitationEmailTemplate({ groupName, inviterName, acceptUrl });
-      const text = `You've been invited to join ${groupName} on WARQ by ${inviterName}. Accept here: ${acceptUrl}`;
-      await supabase.functions.invoke('send-email', {
-        body: {
-          to: email,
-          subject: `You've been invited to join ${groupName} on WARQ`,
-          text,
-          html
-        }
-      });
     }
+
+    // Send email invitation (always, for both new and existing users)
+    const baseUrl = process.env.NODE_ENV === 'production'
+      ? 'https://warq-study-platform.vercel.app'
+      : window.location.origin;
+    const acceptUrl = `${baseUrl}/signup?token=${invitation.invitation_token}`;
+    const inviterName = session.user.user_metadata?.name || session.user.email.split('@')[0];
+    const groupName = group.title;
+    const html = getInvitationEmailTemplate({ groupName, inviterName, acceptUrl });
+    const text = `You've been invited to join ${groupName} on WARQ by ${inviterName}. Accept here: ${acceptUrl}`;
+    await supabase.functions.invoke('send-email', {
+      body: {
+        to: email,
+        subject: `You've been invited to join ${groupName} on WARQ`,
+        text,
+        html
+      }
+    });
 
     return { invitation, reused: false };
   } catch (error) {

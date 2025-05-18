@@ -26,6 +26,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Avatar } from '../../components/Avatar';
 import { createGroup, inviteToGroup, getUserGroups, getGroupMembers } from '../../services/groupService';
 import Chat from '../../components/Chat/Chat';
+import { clearAllNotifications } from '../../utils/notificationHelpers';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 
@@ -1234,11 +1235,27 @@ function Dashboard() {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Clear all notifications first
+      clearAllNotifications();
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
+      // Clear all Supabase session data from localStorage
+      const sessionKey = `sb-${process.env.REACT_APP_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token`;
+      localStorage.removeItem(sessionKey);
+      localStorage.removeItem('sb-access-token');
+      localStorage.removeItem('sb-refresh-token');
+      
+      // Use React Router's navigate for proper routing
+      navigate('/login');
+      
+      // Show success message
+      toast.success('Successfully signed out');
     } catch (error) {
       console.error("Logout error:", error);
+      toast.error('Failed to sign out. Please try again.');
     }
   };
 

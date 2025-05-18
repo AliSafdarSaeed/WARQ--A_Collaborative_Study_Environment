@@ -166,7 +166,10 @@ export const inviteToGroup = async (groupId, email, invitationToken) => {
 
     } else {
       // Send email invitation only for non-existing users
-      const acceptUrl = `${window.location.origin}/accept-invitation?token=${invitationToken}`;
+      const baseUrl = process.env.NODE_ENV === 'production'
+        ? 'https://warq-study-platform.vercel.app'
+        : window.location.origin;
+      const acceptUrl = `${baseUrl}/signup?token=${invitationToken}`;
       const inviterName = session.user.user_metadata?.name || session.user.email.split('@')[0];
       const groupName = group.title;
       const html = getInvitationEmailTemplate({ groupName, inviterName, acceptUrl });

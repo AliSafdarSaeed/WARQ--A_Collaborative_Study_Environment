@@ -171,7 +171,9 @@ function App() {
     // Cleanup function
     return () => {
       mounted = false;
-      subscription?.unsubscribe();
+      if (typeof subscription?.unsubscribe === 'function') {
+        subscription.unsubscribe();
+      }
     };
   }, []);
 

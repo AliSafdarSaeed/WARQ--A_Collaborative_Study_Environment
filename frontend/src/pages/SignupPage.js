@@ -84,6 +84,58 @@ const SignUpPage = () => {
     checkInvitation();
   }, [invitationToken]);
 
+  async function handleSignup(email, password, invitationToken) {
+    try {
+      // Validate invitation token if provided
+      if (invitationToken) {
+        const { data: invitation, error } = await supabase
+          .from('projects_invitations')
+          .select('invited_email, project:project_id(title)')
+          .eq('invitation_token', invitationToken)
+          .eq('status', 'pending')
+          .gt('expires_at', new Date().toISOString())
+          .maybeSingle();
+
+        if (error || !invitation) {
+          console.error('Invitation error:', error?.message || 'No valid invitation');
+          return { error: 'Invalid or expired invitation' };
+        }
+
+        // Accept invitation
+        const { data, error: acceptError } = await supabase.functions.invoke('accept-invitation', {
+          body: { token: invitationToken },
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        });
+
+        if (acceptError) {
+          console.error('Accept invitation error:', acceptError);
+          return { error: 'Failed to accept invitation' };
+        }
+        console.log('Invitation accepted:', data);
+      }
+
+      // Sign up user
+      const { data: authData, error: signupError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (signupError) {
+        console.error('Signup error:', signupError);
+        return { error: signupError.message };
+      }
+
+      // Send welcome email
+      await sendWelcomeEmail(email);
+      console.log('Welcome email sent to:', email);
+
+      return { data: authData };
+    } catch (error) {
+      console.error('Unexpected signup error:', error);
+      return { error: error.message };
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -115,86 +167,13 @@ const SignUpPage = () => {
 
       console.log("Starting signup process...");
 
-      // Sign up with Supabase auth
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.name.trim(),
-          },
-          emailRedirectTo: `${getNetworkUrl()}/login?confirmation_success=true`
-        }
-      });
+      const result = await handleSignup(formData.email, formData.password, invitationToken);
 
-      if (signUpError) {
-        console.error("Signup error:", signUpError);
-        setError(signUpError.message);
+      if (result.error) {
+        setError(result.error);
+        setLoading(false);
         return;
       }
-
-      if (!authData.user) {
-        console.error("No user data received");
-        setError('Failed to create user account');
-        return;
-      }
-
-      let groupId = null;
-      // If there's an invitation token, accept it and get the group ID
-      if (invitationToken) {
-        try {
-          // Fix: send body as an object, not a string
-          const { data: inviteData, error: acceptError } = await supabase.functions.invoke('accept-invitation', {
-            body: { token: invitationToken }
-          });
-
-          if (acceptError) throw acceptError;
-          
-          if (!inviteData?.groupId) {
-            throw new Error('No group ID received from invitation');
-          }
-
-          groupId = inviteData.groupId;
-
-          // Get group details
-          const { data: groupData } = await supabase
-            .from('projects')
-            .select('title')
-            .eq('id', groupId)
-            .single();
-
-          // Send notification about new member
-          await supabase.from('notifications').insert([{
-            type: 'member_joined',
-            title: 'New Member Joined',
-            message: `${formData.email} has joined the group "${groupData?.title || 'Unknown'}"`,
-            group_id: groupId,
-            user_id: authData.user.id,
-            created_at: new Date().toISOString()
-          }]);
-
-          // Update member status (accept both 'active' and 'accepted')
-          await supabase
-            .from('project_members')
-            .update({ 
-              status: 'accepted',
-              joined_at: new Date().toISOString()
-            })
-            .eq('project_id', groupId)
-            .eq('user_id', authData.user.id);
-
-          console.log('Successfully accepted invitation to group:', groupId);
-        } catch (acceptError) {
-          console.error('Error accepting invitation:', acceptError);
-          // Don't throw here, as the user is already signed up
-        }
-      }
-
-      // Send welcome email (emailService expects to, subject, text, html)
-      await sendWelcomeEmail({
-        toEmail: formData.email,
-        name: formData.name.trim()
-      });
 
       setSuccess('Sign up successful! Please check your email to verify your account.');
       
@@ -206,9 +185,9 @@ const SignUpPage = () => {
       });
 
       // Redirect based on whether there was an invitation
-      if (groupId) {
+      if (result.data) {
         // Redirect to dashboard with group parameter
-        navigate(`/dashboard?group=${groupId}`);
+        navigate(`/dashboard`);
       } else {
         navigate('/dashboard');
       }

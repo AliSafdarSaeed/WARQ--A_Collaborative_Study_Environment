@@ -86,7 +86,22 @@ const SignUpPage = () => {
 
   async function handleSignup(email, password, invitationToken) {
     try {
-      // Validate invitation token if provided
+      // Sign up user first
+      const { data: authData, error: signupError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (signupError) {
+        console.error('Signup error:', signupError);
+        return { error: signupError.message };
+      }
+
+      // Send welcome email
+      await sendWelcomeEmail(email);
+      console.log('Welcome email sent to:', email);
+
+      // Accept invitation only after successful signup
       if (invitationToken) {
         const { data: invitation, error } = await supabase
           .from('projects_invitations')
@@ -113,21 +128,6 @@ const SignUpPage = () => {
         }
         console.log('Invitation accepted:', data);
       }
-
-      // Sign up user
-      const { data: authData, error: signupError } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      if (signupError) {
-        console.error('Signup error:', signupError);
-        return { error: signupError.message };
-      }
-
-      // Send welcome email
-      await sendWelcomeEmail(email);
-      console.log('Welcome email sent to:', email);
 
       return { data: authData };
     } catch (error) {

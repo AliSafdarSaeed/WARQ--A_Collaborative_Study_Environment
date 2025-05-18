@@ -47,3 +47,23 @@ Thumbs.db
 # Lock files
 package-lock.json
 yarn.lock
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+sendgrid.env
+
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Misc
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.idea/
+.vscode/

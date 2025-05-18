@@ -1,57 +1,82 @@
-import React, { useState } from 'react';
-import '../App.css';
-import { login } from '../services/api';
-import Spinner from '../components/Spinner';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../services/supabase';
-import { useNavigate } from 'react-router-dom';
+import '../App.css';
+import { toast } from 'react-hot-toast';
+import Spinner from '../components/Spinner';
 
 const LoginPage = () => {
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [redirecting, setRedirecting] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
+  useEffect(() => {
+    // Check for email confirmation success
+    const checkEmailConfirmation = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      // If we have a confirmation_success parameter and a session, the email was just confirmed
+      if (searchParams.get('confirmation_success') && session) {
+        toast.success('Email confirmed successfully! You can now log in.');
+      }
+    };
+    
+    checkEmailConfirmation();
+  }, [searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+    setLoading(true);
+
     try {
+      // First ensure we're starting fresh
+      await supabase.auth.signOut();
+      
       // Supabase login
-      const { data, error: supabaseError } = await supabase.auth.signInWithPassword({ email: formData.email, password: formData.password });
+      const { data, error: supabaseError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      
       if (supabaseError) {
-        setError(supabaseError.message);
-        setLoading(false);
-        return;
+        if (supabaseError.message.includes('Email not confirmed')) {
+          throw new Error('Please check your email and confirm your account before logging in.');
+        }
+        throw supabaseError;
       }
-      // Get Supabase access token
-      const supabaseToken = data?.session?.access_token;
-      if (!supabaseToken) {
-        setError('No Supabase session token received.');
-        setLoading(false);
-        return;
+
+      if (!data?.session) {
+        throw new Error('Login failed: No session received.');
       }
-      // Call backend login to get backend JWT and user info
-      const backendRes = await login(formData.email, undefined, supabaseToken);
-      if (backendRes.data && backendRes.data.data && backendRes.data.data.token) {
-        localStorage.setItem('token', backendRes.data.data.token);
-        navigate('/dashboard');
-      } else {
-        setError('Login failed: No backend token received.');
+
+      // Initialize the session
+      const { error: initError } = await supabase.auth.initialize();
+      if (initError) throw initError;
+
+      // Verify we can get the user data
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Login succeeded but user verification failed.');
       }
+
+      // Verify email is confirmed
+      if (!user.email_confirmed_at) {
+        throw new Error('Please check your email and confirm your account before logging in.');
+      }
+
+      setRedirecting(true);
+      // Successful login
+      navigate('/dashboard');
+      toast.success('Welcome back!');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed.');
+      console.error('Login error:', err);
+      setError(err.message);
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -60,7 +85,6 @@ const LoginPage = () => {
   return (
     <div className="signup-page">
       <div className="signup-container">
-        
         {/* Left Section - Logo and Welcome */}
         <div className="signup-left-section">
           <span className="warq-logo-container" style={{ fontSize: '80px', marginBottom: '15px' }}>WARQ</span>
@@ -74,43 +98,70 @@ const LoginPage = () => {
         <div className="signup-right-section">
           <div className="signup-form-container">
             <h2>Log In</h2>
+            <form onSubmit={handleSubmit}>
+              <div className="signup-input-group">
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
 
-            <div className="signup-input-group">
-              <input
-                type="email"
-                placeholder="Email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-              />
-            </div>
+              <div className="signup-input-group">
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
 
-            <div className="signup-input-group">
-              <input
-                type="password"
-                placeholder="Password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-              />
-            </div>
+              {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
 
-            {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+              <button
+                type="submit"
+                className="signup-submit-btn"
+                disabled={loading}
+              >
+                {loading ? 'Logging In...' : 'Log In'}
+              </button>
 
-            <button
-              onClick={handleSubmit}
-              className="signup-submit-btn"
-              disabled={loading}
-            >
-              {loading ? 'Logging In...' : 'Log In'}
-            </button>
+              <div className="signup-link-container">
+                <p>Don't have an account?</p>
+                <Link 
+                  to="/signup" 
+                  className="signup-link"
+                >
+                  Create an account
+                </Link>
+              </div>
+            </form>
           </div>
         </div>
-
       </div>
-      {redirecting && <Spinner />}
+      {(loading || redirecting) && <Spinner />}
+      <style>{`
+        .signup-link-container {
+          margin-top: 1.5rem;
+          text-align: center;
+          color: #ffffff;
+        }
+        .signup-link {
+          display: inline-block;
+          margin-top: 0.5rem;
+          color: #47e584;
+          text-decoration: none;
+          font-weight: 500;
+          transition: color 0.2s ease;
+        }
+        .signup-link:hover {
+          color: #03ae45;
+          text-decoration: underline;
+        }
+      `}</style>
     </div>
   );
 };

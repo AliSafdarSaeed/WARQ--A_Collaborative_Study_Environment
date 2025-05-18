@@ -339,7 +339,6 @@ button {
   text-align: center;      /* Center text inside elements */
 }
 
-
 .signup-welcome {
   text-align: center;
 }
@@ -380,11 +379,11 @@ button {
   color: #ffffff;
   margin-bottom: 2rem;
 }
+
 .signup-submit-btn,
 .signup-input-group input {
   box-sizing: border-box;
 }
-
 
 .signup-input-group {
   margin-bottom: 1rem;
@@ -403,7 +402,6 @@ button {
 .signup-input-group input:focus {
   outline: none;
   border-color: #47e584;
-  
 }
 
 .signup-submit-btn {

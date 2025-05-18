@@ -1,89 +1,135 @@
-import axios from "axios";
+import { supabase } from './supabase';
 
-// Create configurable API instance
-const createAPI = (token = null) => {
-  const instance = axios.create({
-    baseURL: (process.env.REACT_APP_API_URL || 'http://localhost:5001') + "/api"
+// Authentication functions
+export async function login(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password
   });
+  if (error) throw error;
+  return data;
+}
 
-  // Set up request interceptor for authentication
-  instance.interceptors.request.use(
-    (config) => {
-      // Use the provided token first, fall back to localStorage
-      const authToken = token || localStorage.getItem('token');
-      if (authToken) {
-        config.headers['Authorization'] = `Bearer ${authToken}`;
-      }
-      return config;
-    },
-    (error) => Promise.reject(error)
-  );
+export async function logout() {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+}
 
-  // Add response interceptor to handle errors
-  instance.interceptors.response.use(
-    (response) => response,
-    (error) => {
-      // Handle auth errors
-      if (error.response && error.response.status === 401) {
-        console.warn('Authentication error, you might need to log in again');
-      }
-      return Promise.reject(error);
-    }
-  );
+export async function isAuthenticated() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return false;
+  const { user } = session;
+  return !!(user && user.email_confirmed_at);
+}
 
-  return instance;
-};
+// File handling functions
+export async function uploadFile(file, noteId, isCollab = false) {
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const uniqueName = `${Date.now()}_${safeName}`;
+  const path = isCollab ? `collab/${noteId}/${uniqueName}` : `individual/${noteId}/${uniqueName}`;
 
-// Default instance (will use localStorage token)
-const API = createAPI();
+  // Upload to Supabase Storage
+  const { error: uploadError } = await supabase.storage
+    .from("uploads")
+    .upload(path, file, { upsert: true, metadata: { note_id: noteId } });
 
-// Allow creating a configured instance with specific token
-export const getConfiguredAPI = (token) => createAPI(token);
+  if (uploadError) throw uploadError;
 
-// Example: Auth
-// Enhanced login to support Supabase token
-export const login = (email, password, token) =>
-  API.post("/auth/login", { email, password, token });
+  // Get public URL
+  const { data: publicUrlData } = supabase.storage
+    .from("uploads")
+    .getPublicUrl(path);
 
-// Example: Signup
-export const signup = ({ username, email, password }) =>
-  API.post("/auth/signup", { username, email, password });
+  // Save metadata
+  const { error: metadataError } = await supabase
+    .from("files")
+    .insert([{
+      note_id: noteId,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      url: publicUrlData.publicUrl,
+      path,
+      is_collab: isCollab,
+      uploaded_at: new Date().toISOString()
+    }]);
 
-// Example: Get Projects
-export const getProjects = () => API.get("/projects");
+  if (metadataError) throw metadataError;
 
-// Projects
-export const getUserProjects = () => API.get('/projects');
-export const createProject = (data) => API.post('/projects', data);
-export const joinProject = (data) => API.post('/projects/join', data);
-export const setProjectRole = (data) => API.post('/projects/set-role', data);
-export const inviteToProject = (data) => API.post('/projects/invite', data);
+  return publicUrlData.publicUrl;
+}
 
-// Notes
-export const getNotes = () => API.get('/notes');
-export const getNoteById = (noteId) => API.get(`/notes/${noteId}`);
-export const createNote = (data) => API.post('/notes', data);
-export const editNote = (noteId, data) => API.put(`/notes/${noteId}`, data);
-export const deleteNote = (noteId) => API.delete(`/notes/${noteId}`);
-export const markNoteCompleted = (data) => API.post('/notes/complete', data);
-export const addFileToNote = (noteId, file) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  return API.post(`/notes/${noteId}/files`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  });
-};
-export const subscribeToNote = (data) => API.post('/notes/subscribe', data);
-export const unsubscribeFromNote = (data) => API.post('/notes/unsubscribe', data);
+export async function deleteFile(fileId, filePath) {
+  // Remove from storage
+  if (filePath) {
+    const { error: storageError } = await supabase.storage
+      .from("uploads")
+      .remove([filePath]);
+    if (storageError) throw storageError;
+  }
 
-// User
-export const getUserProfile = () => API.get('/auth/me');
+  // Remove metadata
+  const { error: dbError } = await supabase
+    .from("files")
+    .delete()
+    .eq("id", fileId);
+  if (dbError) throw dbError;
+}
 
-// Quizzes
-export const createQuiz = (data) => API.post('/notes/quiz', data);
-export const getQuizzesForNote = (noteId) => API.get(`/notes/${noteId}/quizzes`);
-export const submitQuiz = (data) => API.post('/notes/quiz/submit', data);
+// Project functions
+export async function createProject(title, description = '') {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
 
-// Add more API functions as needed...
-export default API;
+  // Create project with creator as user_id
+  const { data, error } = await supabase
+    .from('projects')
+    .insert([{
+      title,
+      description,
+      user_id: user.id
+    }])
+    .select();
+
+  if (error) throw error;
+
+  // Add creator as admin in project_members
+  const project = data[0];
+  const { error: memberError } = await supabase
+    .from('project_members')
+    .insert([{
+      project_id: project.id,
+      user_id: user.id,
+      role: 'admin'
+    }]);
+  if (memberError) throw memberError;
+
+  return project;
+}
+
+export async function joinProject(projectId) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // Check if already a member
+  const { data: existing, error: fetchError } = await supabase
+    .from('project_members')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('user_id', user.id)
+    .single();
+
+  if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
+  if (existing) throw new Error('Already a member of this project');
+
+  // Add user as viewer
+  const { error: insertError } = await supabase
+    .from('project_members')
+    .insert([{
+      project_id: projectId,
+      user_id: user.id,
+      role: 'viewer'
+    }]);
+  if (insertError) throw insertError;
+}
 

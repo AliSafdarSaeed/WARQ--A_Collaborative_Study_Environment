@@ -1,0 +1,81 @@
+.note-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+}
+
+.active-users {
+  position: absolute;
+  top: -30px;
+  right: 0;
+  padding: 4px 12px;
+  background: var(--background-lighter);
+  border-radius: 20px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.active-users span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+}
+
+/* Editor Styles */
+.tox-tinymce {
+  border: none !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+.tox .tox-toolbar__primary {
+  background: var(--background-lighter) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.tox .tox-edit-area__iframe {
+  background: var(--background-dark) !important;
+}
+
+/* Toast Notification Styles */
+.toast-notification {
+  background: var(--background-lighter) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 8px !important;
+  padding: 12px 16px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+  font-size: 0.9rem !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.toast-notification.typing {
+  background: rgba(71, 229, 132, 0.1) !important;
+  border-color: rgba(71, 229, 132, 0.2) !important;
+}
+
+.toast-notification.editing {
+  background: rgba(255, 171, 64, 0.1) !important;
+  border-color: rgba(255, 171, 64, 0.2) !important;
+}
+
+.toast-notification.joined {
+  background: rgba(64, 156, 255, 0.1) !important;
+  border-color: rgba(64, 156, 255, 0.2) !important;
+} 

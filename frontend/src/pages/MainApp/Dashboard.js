@@ -23,8 +23,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import WarqLogo from '../../components/WarqLogo';
 import InviteModal from '../../components/InviteModal';
 import Chat from '../../components/Chat/Chat';
-import { subscribeToGroupNotes, subscribeToGroupPresence } from '../../services/groupService';
-import { getGroupMembers } from '../../services/groupService';
+import { subscribeToGroupNotes, subscribeToGroupPresence, createGroup, getGroupMembers } from '../../services/groupService';
+import { acceptGroupInvitation } from '../../services/groupService';
 
 const sortNotesByDate = (notes) => {
   return [...notes].sort((a, b) => 
@@ -102,6 +102,9 @@ function Dashboard() {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchParams] = useSearchParams();
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [signOutSaving, setSignOutSaving] = useState(false);
+
 
   // Add these state variables next to other state declarations
   const [page, setPage] = useState(0);
@@ -168,7 +171,7 @@ function Dashboard() {
       // Only include project_id if in group mode and a group is selected
       const presence = {
         user_id: user.id,
-        user_name: user.name || user.user_metadata?.full_name || 'User',
+        user_name: user.name || user.user_metadata?.name || 'User',
         user_email: user.email,
         note_id: noteId,
         ...(isGroupMode && selectedGroup ? { project_id: selectedGroup } : {}),
@@ -640,27 +643,72 @@ function Dashboard() {
   // Fetch user data from Supabase
   const fetchUserData = async () => {
     try {
+      setProfileLoading(true);
       // Check if we're authenticated with Supabase
-      const { data: { session }, error: supabaseError } = await supabase.auth.getSession();
-      if (supabaseError || !session) {
-        console.error("Supabase auth error:", supabaseError);
-        window.location.href = '/login';
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error("Supabase auth error:", sessionError);
+        navigate('/login');
         return;
       }
+      
+      if (!session) {
+        console.warn("No active session found");
+        navigate('/login');
+        return;
+      }
+      
       // Get the user data
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
         .eq('id', session.user.id)
         .single();
-      if (userError) throw userError;
-      setUser(userData);
+
+      if (userError) {
+        console.error("Error fetching user data:", userError);
+        // If user record doesn't exist, create one with basic info from auth
+        if (userError.code === 'PGRST116') { // No rows returned
+          const { data: newUser, error: createError } = await supabase
+            .from('users')
+            .insert([{
+              id: session.user.id,
+              email: session.user.email,
+              name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
+              created_at: new Date().toISOString()
+            }])
+            .select()
+            .single();
+            
+          if (createError) {
+            console.error("Failed to create user record:", createError);
+            throw createError;
+          }
+          
+          setUser(newUser);
+        } else {
+          throw userError;
+        }
+      } else {
+        // Update the user state with fetched data
+        setUser({
+          ...userData,
+          // Ensure user_metadata is available
+          user_metadata: session.user.user_metadata || {}
+        });
+      }
     } catch (e) {
       console.error("Auth verification error:", e);
-      const { data: { session }, error: supabaseError } = await supabase.auth.getSession();
-      if (supabaseError || !session) {
-        console.error("Supabase auth error:", supabaseError);
-        window.location.href = '/login';
+      // One more attempt to verify session
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          navigate('/login');
+        }
+      } catch (finalError) {
+        console.error("Final auth check failed:", finalError);
+        navigate('/login');
       }
     } finally {
       setProfileLoading(false);
@@ -1213,23 +1261,24 @@ function Dashboard() {
 
   const handleLogout = async () => {
     console.log('Sign out button clicked');
+    
+    // Check if there are unsaved changes
+    if (noteTitle?.trim() && noteContent && noteContent !== '<p></p>') {
+      // Show modal instead of basic confirm
+      setShowSignOutModal(true);
+      return;
+    }
+    
+    // If no unsaved changes, proceed with logout
+    performLogout();
+  };
+
+  // New function to handle actual logout process
+  const performLogout = async () => {
     try {
-      // Prompt user to save their work before signing out
-      if (noteTitle?.trim() && noteContent && noteContent !== '<p></p>') {
-        const shouldSave = window.confirm('Do you want to save your current note before signing out?');
-        if (shouldSave) {
-          const saved = await saveCurrentNote();
-          if (saved === false) {
-            toast.error('Failed to save note. Please try again.');
-            return;
-          }
-        } else {
-          // If user cancels, do not sign out
-          return;
-        }
-      }
       // Clear all notifications first
       if (typeof clearAllNotifications === 'function') clearAllNotifications();
+      
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
       if (error) {
@@ -1237,15 +1286,38 @@ function Dashboard() {
         toast.error('Failed to sign out. Please try again.');
         return;
       }
+      
       // Clear all Supabase session data from localStorage
       localStorage.removeItem('sb-access-token');
       localStorage.removeItem('sb-refresh-token');
+      
       // Use React Router's navigate for proper routing
       navigate('/login');
       toast.success('Successfully signed out');
     } catch (error) {
       console.error('Logout error:', error);
       toast.error('Failed to sign out. Please try again.');
+    }
+  };
+
+  // New function to save note and then sign out
+  const saveAndSignOut = async () => {
+    try {
+      setSignOutSaving(true);
+      const saved = await saveCurrentNote();
+      setSignOutSaving(false);
+      
+      if (saved === false) {
+        toast.error('Failed to save note. Please try again.');
+        return;
+      }
+      
+      setShowSignOutModal(false);
+      performLogout();
+    } catch (error) {
+      setSignOutSaving(false);
+      console.error('Error saving before logout:', error);
+      toast.error('Failed to save note. Please try again.');
     }
   };
 
@@ -1796,8 +1868,8 @@ function Dashboard() {
 
   // Update inviteMember function to search for users by name or email
   // Around line 1947
-  const inviteMember = async () => {
-    if (!inviteEmail || !selectedGroup) {
+  const inviteMember = async (selectedUser) => {
+    if (!selectedUser || !selectedUser.id) {
       toast.error('Please enter a valid email address or name');
       return;
     }
@@ -2743,7 +2815,7 @@ function Dashboard() {
               <div className="editor-content" style={{flex: 1, minHeight: '300px', paddingBottom: files.length > 0 ? 60 : 0}}>
                 <EditorContent editor={editor} />
               </div>
-            {files.length > 0 && (
+            {activeNote && files.length > 0 && (
                 <div className="file-cards-row-compact">
                 {files.map(file => (
                     <FileCard
@@ -2770,6 +2842,52 @@ function Dashboard() {
         groupName={groups.find(g => g.id === selectedGroup)?.title || 'Group'}
       />
 
+      {/* Create Group Modal */}
+      {showCreateGroupModal && (
+        <div className="modal-backdrop" onClick={() => setShowCreateGroupModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Create New Group</h3>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const name = e.target.elements.groupName.value;
+              const description = e.target.elements.groupDescription.value;
+              createNewGroup(name, description);
+              setShowCreateGroupModal(false);
+            }}>
+              <input
+                type="text"
+                name="groupName"
+                placeholder="Group Name"
+                className="modal-input"
+                required
+              />
+              <textarea
+                name="groupDescription"
+                placeholder="Group Description (Optional)"
+                className="modal-input"
+                style={{ minHeight: '80px', resize: 'vertical' }}
+              ></textarea>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="modal-button cancel"
+                  onClick={() => setShowCreateGroupModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="modal-button invite"
+                >
+                  <FolderPlus size={16} />
+                  Create Group
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Add the Chat component */}
       {isGroupMode && selectedGroup && (
         <Chat
@@ -2779,6 +2897,42 @@ function Dashboard() {
           showChat={showChat}
           onClose={() => setShowChat(false)}
         />
+      )}
+
+      {/* Sign Out Confirmation Modal */}
+      {showSignOutModal && (
+        <Modal
+          isOpen={showSignOutModal}
+          onRequestClose={() => setShowSignOutModal(false)}
+          contentLabel="Confirm Sign Out"
+          className="sign-out-modal"
+        >
+          <h3>Confirm Sign Out</h3>
+          <p>You have unsaved changes. Do you want to save your note before signing out?</p>
+          <div className="modal-actions">
+            <button
+              onClick={() => {
+                setShowSignOutModal(false);
+                // Proceed with logout without saving
+                performLogout();
+              }}
+              className="modal-button"
+            >
+              Sign Out Without Saving
+            </button>
+            <button
+              onClick={() => {
+                setShowSignOutModal(false);
+                // Save note and then sign out
+                saveAndSignOut();
+              }}
+              className="modal-button save"
+              disabled={signOutSaving}
+            >
+              {signOutSaving ? <Spinner size={16} /> : 'Save and Sign Out'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

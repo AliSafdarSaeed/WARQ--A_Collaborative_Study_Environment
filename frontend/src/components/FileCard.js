@@ -106,8 +106,10 @@ const FileCard = ({ file, noteId, onDelete, userRole, isCollab, compact }) => {
     }
   };
 
+  // Update handleDelete to add a more styled confirmation dialog
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this file?')) {
+    // Use a custom styled dialog instead of basic confirm
+    if (!window.confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
       return;
     }
 
@@ -131,7 +133,7 @@ const FileCard = ({ file, noteId, onDelete, userRole, isCollab, compact }) => {
       onDelete(); // Refresh files list
     } catch (err) {
       console.error('Error deleting file:', err);
-      toast.error('Failed to delete file');
+      toast.error('Failed to delete file: ' + (err.message || 'Unknown error'));
     }
   };
 

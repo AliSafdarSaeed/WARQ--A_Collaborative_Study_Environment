@@ -8,7 +8,6 @@ import Dashboard from './pages/MainApp/Dashboard';
 import { supabase } from "./services/supabase";
 import Spinner from "./components/Spinner";
 import JoinProjectPage from './pages/JoinProjectPage';
-import AuthListener from "./components/AuthListener"; // Import the AuthListener component
 
 // Improved auth state management
 function App() {
@@ -197,7 +196,6 @@ function App() {
 
   return (
     <div style={{ height: "100%", width: "100%" }}>
-      <AuthListener /> {/* Add the AuthListener component here */}
       <Router>
         <Routes>
           <Route path="/" element={<HomePage />} />

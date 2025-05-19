@@ -17,16 +17,17 @@ import FileCard from "../../components/FileCard";
 import Modal from '../../components/Modal';
 import FileUpload from '../../components/FileUpload';
 import { Toaster, toast } from 'react-hot-toast';
-import { Bell, Menu, Search, Plus, Bold, Italic, Heading1, Heading2, List, ListOrdered, Palette, Upload, MessageSquare, Bot, X, Edit3, Save, LogOut, Users, UserPlus, FolderPlus } from 'lucide-react';
+import { Bell, Menu, Search, Plus, Bold, Italic, Heading1, Heading2, List, ListOrdered, Palette, Upload, MessageSquare, Bot, X, Edit3, Save, LogOut, Users, UserPlus, FolderPlus, FileText, Check } from 'lucide-react';
 import NotificationCard from '../../components/NotificationCard';
 import { sendNotification } from '../../services/notificationService';
 import WarqLogo from '../../components/WarqLogo';
 import { createClient } from '@supabase/supabase-js';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Avatar } from '../../components/Avatar';
-import { createGroup, inviteToGroup, getUserGroups, getGroupMembers } from '../../services/groupService';
+import { createGroup, inviteToGroup, getUserGroups, getGroupMembers, inviteUserToGroup, acceptGroupInvitation, declineGroupInvitation } from '../../services/groupService';
 import Chat from '../../components/Chat/Chat';
 import { clearAllNotifications } from '../../utils/notificationHelpers';
+import { subscribeToGroupNotes, subscribeToGroupPresence } from '../../services/groupService';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 
@@ -37,23 +38,192 @@ const sortNotesByDate = (notes) => {
 };
 
 const InviteModal = ({ isOpen, onClose, onInvite, email, setEmail }) => {
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSearch = async () => {
+    if (!email.trim()) {
+      setError('Please enter a name or email to search');
+      return;
+    }
+
+    setSearching(true);
+    setError('');
+    try {
+      // Search by email
+      const { data: emailMatches, error: emailError } = await supabase
+        .from('users')
+        .select('id, email, name, user_metadata')
+        .ilike('email', `%${email}%`)
+        .limit(5);
+
+      // Search by name
+      const { data: nameMatches, error: nameError } = await supabase
+        .from('users')
+        .select('id, email, name, user_metadata')
+        .ilike('name', `%${email}%`)
+        .limit(5);
+
+      const allResults = [...(emailMatches || [])];
+      
+      // Add name matches that aren't already in email matches
+      if (nameMatches) {
+        nameMatches.forEach(match => {
+          if (!allResults.some(r => r.id === match.id)) {
+            allResults.push(match);
+          }
+        });
+      }
+
+      setSearchResults(allResults);
+      
+      if (allResults.length === 0) {
+        setError('No users found matching that name or email');
+      }
+    } catch (err) {
+      console.error('Search error:', err);
+      setError('Error searching for users');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleUserSelect = (user) => {
+    setEmail(user.email);
+    setSearchResults([]);
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchResults([]);
+      setError('');
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
   
   return (
     <div className="modal-backdrop">
       <div className="modal-content">
         <h3>Invite Member</h3>
-        <input
-          type="email"
-          placeholder="Enter email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="modal-input"
-        />
+        <div className="search-section">
+          <input
+            type="text"
+            placeholder="Search by name or email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            className="modal-input"
+          />
+          <button 
+            onClick={handleSearch}
+            disabled={searching}
+            className="search-btn"
+          >
+            {searching ? 'Searching...' : 'Search'}
+          </button>
+        </div>
+        
+        {error && <div className="search-error">{error}</div>}
+        
+        {searchResults.length > 0 && (
+          <div className="search-results">
+            {searchResults.map(user => (
+              <div 
+                key={user.id} 
+                className="user-result"
+                onClick={() => handleUserSelect(user)}
+              >
+                <div className="user-avatar">
+                  {user.name ? user.name.charAt(0).toUpperCase() : 
+                    user.email.charAt(0).toUpperCase()}
+                </div>
+                <div className="user-info">
+                  <div className="user-name">
+                    {user.name || user.user_metadata?.full_name || 'User'}
+                  </div>
+                  <div className="user-email">{user.email}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
         <div className="modal-actions">
           <button onClick={onClose} className="modal-button cancel">Cancel</button>
-          <button onClick={onInvite} className="modal-button invite">Send Invite</button>
+          <button 
+            onClick={onInvite} 
+            className="modal-button invite"
+            disabled={!email.trim()}
+          >
+            Send Invite
+          </button>
         </div>
+
+        <style jsx>{`
+          .search-section {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+          }
+          .search-btn {
+            padding: 0 16px;
+            background: #47e584;
+            color: #181818;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+          }
+          .search-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+          .search-error {
+            color: #ff6b6b;
+            margin-bottom: 16px;
+            font-size: 14px;
+          }
+          .search-results {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 16px;
+            border: 1px solid #333;
+            border-radius: 4px;
+          }
+          .user-result {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+          .user-result:hover {
+            background: rgba(71, 229, 132, 0.1);
+          }
+          .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(71, 229, 132, 0.2);
+            color: #47e584;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-right: 12px;
+            font-size: 16px;
+          }
+          .user-name {
+            font-weight: 500;
+            margin-bottom: 2px;
+          }
+          .user-email {
+            font-size: 12px;
+            color: #aaa;
+          }
+        `}</style>
       </div>
     </div>
   );
@@ -196,7 +366,8 @@ function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const editorRef = useRef(null);
-  const [notes, setNotes] = useState([]); // Ensure notes is always an array
+  const fileInputRef = useRef(null);  // Add this line
+  const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [notesError, setNotesError] = useState(false); // <-- Add this line
   const [noteTitle, setNoteTitle] = useState('');
@@ -259,6 +430,17 @@ function Dashboard() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchParams] = useSearchParams();
 
+  // Add these state variables next to other state declarations
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const NOTES_PER_PAGE = 10;
+
+  // Add this ref to track last mode
+  const lastModeRef = useRef({ isGroupMode: null, selectedGroup: null });
+
+  // Add groupMembers state variable with the other state declarations (line ~277)
+  const [groupMembers, setGroupMembers] = useState([]);
+
   const notificationTypes = [
     { value: 'all', label: 'All Notifications' },
     { value: 'role_change', label: 'Role Changes' },
@@ -310,16 +492,25 @@ function Dashboard() {
         .delete()
         .match({ user_id: user.id, note_id: noteId });
 
-      // Then insert new presence
+      // Enhanced presence data with more detailed selection info
       const presence = {
         user_id: user.id,
+        user_name: user.name || user.user_metadata?.full_name || 'User',
+        user_email: user.email,
         note_id: noteId,
         project_id: isGroupMode ? selectedGroup : null,
         status,
         cursor_position: editor?.state?.selection ? {
           from: editor.state.selection.from,
-          to: editor.state.selection.to
+          to: editor.state.selection.to,
+          head: editor.state.selection.head,
+          anchor: editor.state.selection.anchor
         } : null,
+        selected_text: editor?.state?.selection && editor?.state?.selection.content ? 
+                      editor.state.doc.textBetween(
+                        editor.state.selection.from,
+                        editor.state.selection.to
+                      ) : '',
         last_active: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -502,37 +693,46 @@ function Dashboard() {
     return sortNotesByDate(filtered);
   }, [notes, notesFilter, isGroupMode, selectedGroup]);
 
-  // Update fetchNotes to handle personal notes only
-  const fetchNotes = useCallback(async (showLoading = true) => {
+  // Replace fetchNotes with this paginated version
+  const fetchNotes = useCallback(async (showLoading = true, isLoadMore = false) => {
     if (showLoading) setNotesLoading(true);
     setNotesError(false);
+    
     try {
       // First verify we have a valid session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw new Error('Session verification failed');
       if (!session) throw new Error('No active session');
 
-      // Fetch user's personal notes only (where project_id is null)
-      const { data: notesArr, error: notesError } = await supabase
+      const start = page * NOTES_PER_PAGE;
+      
+      // Fetch paginated notes
+      const { data: notesArr, error: notesError, count } = await supabase
         .from('notes')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('user_id', session.user.id)
         .is('project_id', null) // Only fetch notes without a project_id
-        .order('updated_at', { ascending: false });
+        .order('updated_at', { ascending: false })
+        .range(start, start + NOTES_PER_PAGE - 1);
 
       if (notesError) {
         console.error("Notes fetch error:", notesError);
         throw new Error(notesError.message);
       }
 
+      // Update hasMore flag
+      setHasMore(count > (page + 1) * NOTES_PER_PAGE);
+
       if (!notesArr) {
         console.warn("No notes returned from query");
-        setNotes([]);
+        if (!isLoadMore) setNotes([]);
         return [];
       }
 
-      console.log("Fetched personal notes:", notesArr);
-      setNotes(notesArr);
+      console.log("Fetched notes:", notesArr.length);
+      
+      // Update notes state based on whether we're loading more or not
+      setNotes(prev => isLoadMore ? [...prev, ...notesArr] : notesArr);
       return notesArr;
     } catch (err) {
       console.error("Error fetching notes:", err);
@@ -542,7 +742,116 @@ function Dashboard() {
     } finally {
       setNotesLoading(false);
     }
-  }, []);
+  }, [page]);
+
+  // Add handleLoadMore function
+  const handleLoadMore = useCallback(() => {
+    if (hasMore && !notesLoading) {
+      setPage(prev => prev + 1);
+    }
+  }, [hasMore, notesLoading]);
+
+  // Add pagination reset effect
+  useEffect(() => {
+    setPage(0);
+  }, [user?.id]);
+
+  // Add notes fetch effect that runs when page changes
+  useEffect(() => {
+    fetchNotes(true, page !== 0);
+    // page !== 0 means it's a load more, otherwise initial load
+  }, [page, user?.id]);
+
+  // Add mode switching effect
+  useEffect(() => {
+    // Only fetch if mode or group actually changed
+    if (
+      lastModeRef.current.isGroupMode === isGroupMode &&
+      lastModeRef.current.selectedGroup === selectedGroup
+    ) {
+      return;
+    }
+    lastModeRef.current = { isGroupMode, selectedGroup };
+
+    if (isGroupMode) {
+      if (selectedGroup) {
+        // Fetch group notes
+        setNotesLoading(true);
+        setNotesError(false);
+        fetchGroupNotes(selectedGroup)
+          .catch((err) => {
+            setNotesError(true);
+            setError(err.message || 'Failed to load group notes.');
+          })
+          .finally(() => setNotesLoading(false));
+      } else {
+        // No group selected, clear notes
+        setNotes([]);
+      }
+    } else {
+      // Switching to personal mode: reset pagination and fetch personal notes
+      setPage(0);
+      fetchNotes(true, false);
+    }
+  }, [isGroupMode, selectedGroup, user?.id]);
+
+  // Add initialization effect
+  useEffect(() => {
+    // Make sure we have a user before fetching
+    if (!user?.id) {
+      console.log("No user available yet, postponing initial notes fetch");
+      return;
+    }
+    
+    const initializeNotes = async () => {
+      try {
+        console.log("Initializing notes on mount for user:", user.id);
+        // If we're in personal mode (default), fetch personal notes
+        if (!isGroupMode) {
+          // Fetch initial notes
+          const fetchInitialNotes = async () => {
+            setNotesLoading(true);
+            setNotesError(false);
+            
+            try {
+              const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+              if (sessionError) throw new Error('Session verification failed');
+              if (!session) throw new Error('No active session');
+              
+              // Fetch initial page of notes
+              const { data: notesArr, error: notesError } = await supabase
+                .from('notes')
+                .select('*', { count: 'exact' })
+                .eq('user_id', session.user.id)
+                .is('project_id', null)
+                .order('updated_at', { ascending: false })
+                .range(0, NOTES_PER_PAGE - 1);
+
+              if (notesError) {
+                console.error("Initial notes fetch error:", notesError);
+                throw new Error(notesError.message);
+              }
+
+              console.log("Successfully fetched initial notes:", notesArr?.length || 0);
+              setNotes(notesArr || []);
+            } catch (err) {
+              console.error("Error in initial notes fetch:", err);
+              setNotesError(true);
+              setError(err.message || 'Failed to load notes. Please try refreshing the page.');
+            } finally {
+              setNotesLoading(false);
+            }
+          };
+
+          await fetchInitialNotes();
+        }
+      } catch (err) {
+        console.error("Error initializing notes:", err);
+      }
+    };
+
+    initializeNotes();
+  }, [user?.id]);
 
   // Update fetchGroupNotes to handle group notes only
   const fetchGroupNotes = async (groupId) => {
@@ -716,6 +1025,13 @@ function Dashboard() {
     e.preventDefault();
     setError('');
 
+    // Remove the check that prevents note creation without group members
+    // Only check if in group mode but no group selected
+    if (isGroupMode && !selectedGroup) {
+      toast.error('Please select a group first');
+      return;
+    }
+
     try {
       // Check session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -723,16 +1039,26 @@ function Dashboard() {
         throw new Error('Authentication required. Please log in again.');
       }
 
+      // Ensure editingNoteId matches the note being edited
+      let currentEditingId = editingNoteId;
+      if (!currentEditingId && activeNote && activeNote.id) {
+        currentEditingId = activeNote.id;
+        setEditingNoteId(activeNote.id);
+      }
+
       // Check for duplicate title
-      const { data: existingNotes, error: titleCheckError } = await supabase
+      let titleQuery = supabase
         .from('notes')
         .select('id')
         .eq('user_id', session.user.id)
-        .eq('title', noteTitle.trim())
-        .neq('id', editingNoteId || ''); // Exclude current note if editing
-
+        .eq('title', noteTitle.trim());
+      
+      if (currentEditingId) {
+        titleQuery = titleQuery.neq('id', currentEditingId);
+      }
+      
+      const { data: existingNotes, error: titleCheckError } = await titleQuery;
       if (titleCheckError) throw titleCheckError;
-
       if (existingNotes?.length > 0) {
         throw new Error('A note with this title already exists. Please choose a different title.');
       }
@@ -756,23 +1082,7 @@ function Dashboard() {
 
       // Add project_id only if we're in group mode and have a selected group
       if (isGroupMode && selectedGroup) {
-        // Verify user has permission in the group
-        const { data: membership, error: membershipError } = await supabase
-          .from('project_members')
-          .select('role')
-          .eq('project_id', selectedGroup)
-          .eq('user_id', session.user.id)
-          .eq('status', 'accepted')
-          .single();
-
-        if (membershipError || !membership) {
-          throw new Error('You do not have permission to create notes in this group.');
-        }
-
-        if (!['admin', 'editor'].includes(membership.role)) {
-          throw new Error('You need editor or admin role to create/edit notes.');
-        }
-
+        // No permission check needed for creating notes in your own group
         noteData.project_id = selectedGroup;
         // Update file path for group notes
         noteData.file_path = `notes/groups/${selectedGroup}/${timestamp}-${safeTitleSlug}`;
@@ -988,13 +1298,12 @@ function Dashboard() {
     try {
       if (activeNote && activeNote.id !== note.id) {
         await saveCurrentNote();
-      } 
-      // Set up for editing the selected note
-      setEditingNoteId(note.id);
+      }
+      // Always set both activeNote and editingNoteId to the note's id
       setActiveNote(note);
+      setEditingNoteId(note.id);
       setNoteTitle(note.title || '');
       setNoteContent(note.content || '');
-      
       // Fetch files for the selected note
       await fetchFiles(note.id);
     } catch (error) {
@@ -1677,7 +1986,7 @@ function Dashboard() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Update handleModeSwitch to properly handle note switching
+  // Update handleModeSwitch to properly handle mode switching
   const handleModeSwitch = async () => {
     try {
       const newMode = !isGroupMode;
@@ -1690,6 +1999,7 @@ function Dashboard() {
       setNoteTitle('');
       setNoteContent('');
       setSelectedGroup(null);
+      setNotesFilter(''); // Clear search filter
       
       if (newMode) {
         // Switching to group mode
@@ -1704,25 +2014,10 @@ function Dashboard() {
         }
       } else {
         // Switching to personal mode
-        try {
-          await fetchNotes();
-        } catch (err) {
-          console.error('Error fetching notes:', err);
-          toast.error('Failed to load notes');
-        }
+        await fetchNotes(); // This will only fetch personal notes
       }
-
-      toast.success(`Switched to ${newMode ? 'Group' : 'Personal'} Notes`, {
-        duration: 2000,
-        style: {
-          background: 'var(--background-lighter)',
-          border: '1px solid var(--primary-color)',
-          borderRadius: '6px',
-          color: 'var(--text-primary)',
-        }
-      });
-    } catch (err) {
-      console.error('Error switching modes:', err);
+    } catch (error) {
+      console.error('Error switching modes:', error);
       toast.error('Failed to switch modes');
     }
   };
@@ -1817,21 +2112,78 @@ function Dashboard() {
     };
   }, [user?.id, user?.email]);
 
-  // Update the inviteMember function
+  // Update inviteMember function to search for users by name or email
+  // Around line 1947
   const inviteMember = async () => {
     if (!inviteEmail || !selectedGroup) {
-      toast.error('Please provide an email address');
+      toast.error('Please enter a valid email address or name');
+      return;
+    }
+
+    try {
+      const loadingToast = toast.loading('Searching for user...');
+      
+      // First try to find the user by exact email match
+      let userToInvite;
+      const { data: userByEmail, error: emailError } = await supabase
+        .from('users')
+        .select('id, email, name, user_metadata')
+        .eq('email', inviteEmail)
+        .single();
+      
+      if (userByEmail) {
+        userToInvite = userByEmail;
+      } else {
+        // If no exact email match, try searching by name
+        const { data: usersByName, error: nameError } = await supabase
+          .from('users')
+          .select('id, email, name, user_metadata')
+          .ilike('name', `%${inviteEmail}%`)
+          .limit(1);
+        
+        if (usersByName && usersByName.length > 0) {
+          userToInvite = usersByName[0];
+        }
+      }
+
+      if (!userToInvite) {
+        toast.dismiss(loadingToast);
+        toast.error('User not found in WARQ. Only existing users can be invited.');
         return;
       }
 
-    try {
-      const loadingToast = toast.loading('Sending invitation...');
-      
-      const { invitation, reused } = await inviteToGroup(selectedGroup, inviteEmail);
-      
       toast.dismiss(loadingToast);
+      toast.loading(`Found user: ${userToInvite.name || userToInvite.email}. Sending invitation...`);
+
+      // Check if user is already a member
+      const { data: existingMember, error: memberError } = await supabase
+        .from('project_members')
+        .select('id')
+        .eq('project_id', selectedGroup)
+        .eq('user_id', userToInvite.id)
+        .eq('status', 'accepted')
+        .single();
+
+      if (existingMember) {
+        toast.dismiss();
+        toast.error('User is already a member of this group');
+        return;
+      }
+
+      // Get group details
+      const { data: group, error: groupError } = await supabase
+        .from('projects')
+        .select('title')
+        .eq('id', selectedGroup)
+        .single();
+
+      if (groupError) throw groupError;
+
+      const { invitation, reused } = await inviteUserToGroup(selectedGroup, userToInvite.id, user.id);
+      
+      toast.dismiss();
       if (reused) {
-        toast.success('Invitation already sent to this email');
+        toast.success('Invitation already sent to this user');
       } else {
         toast.success('Invitation sent successfully!');
       }
@@ -1842,28 +2194,30 @@ function Dashboard() {
       // Send notification about the invitation
       if (!reused && user) {
         try {
-          const { data: groupData } = await supabase
-            .from('projects')
-            .select('title')
-            .eq('id', selectedGroup)
-            .single();
-
-          await sendNotification({
-            type: 'group_invitation',
+          await supabase.from('notifications').insert([{
             user_id: user.id,
-            title: 'New Group Invitation',
-            message: `You invited ${inviteEmail} to join "${groupData?.title || 'group'}"`,
-            metadata: {
+            type: 'group_invitation_sent',
+            title: 'Invitation Sent',
+            message: `You invited ${userToInvite.user_metadata?.full_name || userToInvite.name || userToInvite.email} to join "${group.title}"`,
+            data: {
               groupId: selectedGroup,
-              groupTitle: groupData?.title
-            }
-          });
+              groupTitle: group.title,
+              invitedUser: {
+                id: userToInvite.id,
+                email: userToInvite.email,
+                name: userToInvite.user_metadata?.full_name || userToInvite.name
+              }
+            },
+            is_read: false,
+            created_at: new Date().toISOString()
+          }]);
         } catch (notifyError) {
           console.error('Error sending notification:', notifyError);
         }
       }
     } catch (err) {
       console.error('Error inviting member:', err);
+      toast.dismiss();
       toast.error(err.message || 'Failed to send invitation');
     }
   };
@@ -1879,350 +2233,72 @@ function Dashboard() {
   const handleGroupSelect = async (groupId) => {
     try {
     setSelectedGroup(groupId);
-      await fetchGroupNotes(groupId);
-
-      // Set up real-time subscription for this group's notes
-      if (notesChannel.current) {
-        notesChannel.current.unsubscribe();
-      }
-
-      notesChannel.current = supabase
-        .channel(`group-notes:${groupId}`)
-        .on('postgres_changes', 
-          { 
-            event: '*', 
-            schema: 'public', 
-            table: 'notes',
-            filter: `project_id=eq.${groupId}`
-          },
-          async (payload) => {
-            if (payload.new.user_id !== user.id) {
-              await fetchGroupNotes(groupId);
-              
-              // Show notification for changes
-              const action = payload.eventType === 'INSERT' ? 'created' : 'updated';
-              toast.info(`Note "${payload.new.title}" was ${action} by another user`);
-            }
-          }
-        )
-        .subscribe();
-
-    } catch (err) {
-      console.error('Error selecting group:', err);
-      toast.error('Failed to load group notes');
-    }
-  };
-
-  // Add this effect to handle group parameter in URL
-  useEffect(() => {
-    const handleInitialGroupRedirect = async () => {
-      const groupId = searchParams.get('group');
-      if (groupId) {
-        setIsGroupMode(true);
-        setSelectedGroup(groupId);
-        await fetchGroups();
-        await handleGroupSelect(groupId);
-        // Remove the group parameter from URL
-        searchParams.delete('group');
-        navigate(location.pathname, { replace: true });
-      }
-    };
-
-    handleInitialGroupRedirect();
-  }, [searchParams]);
-
-  // Update the presence effect to include more user details
-  useEffect(() => {
-    if (!activeNote?.id || !user) return;
-
-    // Set up presence channel
-    presenceChannel.current = supabase
-      .channel(`presence:${activeNote.id}`)
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.current.presenceState();
-        setCollaborators(state);
-      })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        toast.success(`${newPresences[0].user_name || 'A user'} joined the note`, {
-          duration: 2000,
-        });
-        setCollaborators(prev => ({
-          ...prev,
-          [key]: newPresences[0]
-        }));
-      })
-      .on('presence', { event: 'leave' }, ({ key }) => {
-        setCollaborators(prev => {
-          const newState = { ...prev };
-          delete newState[key];
-          return newState;
-        });
-      })
-      .subscribe(async (status) => {
-        if (status !== 'SUBSCRIBED') return;
-
-        // Track user presence with more details
-        await presenceChannel.current.track({
-          user_id: user.id,
-          user_name: user.name || user.email,
-          user_email: user.email,
-          note_id: activeNote.id,
-          status: 'online',
-          last_seen: new Date().toISOString(),
-          action: editor?.isFocused ? 'editing' : 'viewing'
-        });
-      });
-
-    // Update presence status when editor focus changes
-    const updatePresenceStatus = () => {
-      if (!presenceChannel.current) return;
+      setNotes([]); // Clear existing notes
+      setActiveNote(null);
+      setEditingNoteId(null);
+      setNoteTitle('');
+      setNoteContent('');
       
-      presenceChannel.current.track({
-        user_id: user.id,
-        user_name: user.name || user.email,
-        user_email: user.email,
-        note_id: activeNote.id,
-        status: 'online',
-        last_seen: new Date().toISOString(),
-        action: editor?.isFocused ? 'editing' : 'viewing'
-      });
-    };
-
-    if (editor) {
-      editor.on('focus', updatePresenceStatus);
-      editor.on('blur', updatePresenceStatus);
-    }
-
-    // Cleanup
-    return () => {
-      if (editor) {
-        editor.off('focus', updatePresenceStatus);
-        editor.off('blur', updatePresenceStatus);
+      // Unsubscribe from previous group's real-time updates
+      if (notesChannel.current) {
+        notesChannel.current();
       }
       if (presenceChannel.current) {
-        presenceChannel.current.unsubscribe();
+        presenceChannel.current();
       }
-    };
-  }, [activeNote?.id, user, editor]);
 
-  // Add this to render collaborators with better styling
-  const renderCollaborators = () => {
-    if (!activeNote) return null;
+      // Subscribe to new group's real-time updates
+      notesChannel.current = subscribeToGroupNotes(groupId, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setNotes(prev => [...prev, payload.new]);
+        } else if (payload.eventType === 'UPDATE') {
+          setNotes(prev => prev.map(note => 
+            note.id === payload.new.id ? payload.new : note
+          ));
+        } else if (payload.eventType === 'DELETE') {
+          setNotes(prev => prev.filter(note => note.id !== payload.old.id));
+        }
+      });
 
-    return (
-      <div className="collaborators-bar">
-        <div className="collaborators-list">
-          {Object.values(collaborators).map((collaborator, index) => (
-            <div 
-              key={collaborator.user_id} 
-              className={`collaborator-item ${collaborator.action}`}
-              title={`${collaborator.user_name} is ${collaborator.action}`}
-            >
-              <div className="collaborator-avatar">
-                {collaborator.user_name?.charAt(0).toUpperCase() || '?'}
-              </div>
-              <div className="collaborator-info">
-                <span className="collaborator-name">{collaborator.user_name}</span>
-                <span className="collaborator-status">{collaborator.action}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+      // Subscribe to presence updates
+      presenceChannel.current = subscribeToGroupPresence(groupId, user.id, (state) => {
+        setCollaborators(state);
+      });
+
+      // Fetch initial group data
+      await Promise.all([
+        fetchGroupNotes(groupId),
+        fetchGroupMembers(groupId)
+      ]);
+    } catch (error) {
+      console.error('Error selecting group:', error);
+      toast.error('Failed to load group data');
+    }
   };
 
-  // Add this CSS
-  const collaboratorStyles = `
-    .collaborators-bar {
-      background: var(--background-lighter);
-      border-bottom: 1px solid var(--border-color);
-      padding: 8px 16px;
-      margin-bottom: 8px;
-    }
+  // This function has been moved up to line 549
 
-    .collaborators-list {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .collaborator-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 8px;
-      border-radius: 20px;
-      background: var(--background-dark);
-      border: 1px solid var(--border-color);
-      transition: all 0.2s ease;
-    }
-
-    .collaborator-item.editing {
-      border-color: #47e584;
-    }
-
-    .collaborator-item.viewing {
-      border-color: #3498db;
-    }
-
-    .collaborator-avatar {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: var(--primary-color);
-      color: var(--background-dark);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 600;
-      font-size: 14px;
-    }
-
-    .collaborator-info {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .collaborator-name {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-primary);
-    }
-
-    .collaborator-status {
-      font-size: 10px;
-      color: var(--text-secondary);
-    }
-  `;
-
-  // Add useEffect for fetching notes
-  useEffect(() => {
-    if (user) {
-      if (isGroupMode && selectedGroup) {
-        fetchGroupNotes(selectedGroup);
-      } else {
-        fetchNotes();
-      }
-    }
-  }, [user, isGroupMode, selectedGroup]);
-
-  // Add hidden file input
-  const fileInputRef = useRef(null);
-
-  // Function to trigger file input click
-  const triggerFileUpload = () => {
-    if (!activeNote) {
-      toast.error('Please select or create a note first');
-      return;
-    }
-    fileInputRef.current?.click();
-  };
-
-  // Add this near your JSX where you want the file input
-  const renderFileInput = () => (
-    <input
-      ref={fileInputRef}
-      type="file"
-      onChange={handleFileUpload}
-      style={{ display: 'none' }}
-      accept="*/*"
-    />
-  );
-
-  const renderGroupsList = () => (
-    <div className="groups-list">
-      <div className="groups-section-header">
-        <div className="section-title-row">
-          <h3>Your Groups</h3>
-          <button 
-            onClick={() => setShowCreateGroupModal(true)} 
-            className="new-group-button"
-            title="Create New Group"
-          >
-            <FolderPlus size={16} />
-            <span>New Group</span>
-          </button>
-        </div>
-        <div className="search-container">
-          <Search className="search-icon" size={16} strokeWidth={2} />
-          <input
-            type="text"
-            className="groups-search-input"
-            placeholder="Search groups..."
-            value={notesFilter}
-            onChange={e => setNotesFilter(e.target.value)}
-          />
-        </div>
-      </div>
-      
-      {groupsLoading ? (
-        <div className="groups-loading">
-          {Array(3).fill(0).map((_, i) => (
-            <div key={i} className="group-item loading-skeleton" />
-          ))}
-        </div>
-      ) : groups && groups.length > 0 ? (
-        groups.map(group => group && (
-          <div
-            key={group.id}
-            className={`group-item${selectedGroup === group.id ? ' active' : ''}`}
-            onClick={() => group.id && handleGroupSelect(group.id)}
-          >
-            <div className="group-info">
-              <h4>{group.title || 'Untitled Group'}</h4>
-              {group.description && (
-                <p className="group-description">{group.description}</p>
-              )}
-              <div className="group-meta">
-                <span>Created {group.created_at ? new Date(group.created_at).toLocaleDateString() : 'Unknown date'}</span>
-              </div>
-            </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (group.id) {
-                  setSelectedGroup(group.id);
-                  setShowInviteModal(true);
-                }
-              }}
-              className="group-invite-btn"
-              title="Invite Members"
-            >
-              <UserPlus size={14} />
-            </button>
-          </div>
-        ))
-      ) : null}
-      
-      {groups.length === 0 && (
-        <div className="empty-state">
-          <div className="empty-icon">
-            <Users size={20} />
-          </div>
-          <p>No groups yet</p>
-          <button 
-            onClick={() => setShowCreateGroupModal(true)} 
-            className="new-group-btn"
-          >
-            <FolderPlus size={14} />
-            Create your first group
-          </button>
-        </div>
-      )}
-    </div>
-  );
-
-  const createNewNote = async () => {
+  // Add this function to fetch group members
+  const fetchGroupMembers = async (groupId) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      const members = await getGroupMembers(groupId);
+      setGroupMembers(members);
+    } catch (error) {
+      console.error('Error fetching group members:', error);
+      toast.error('Failed to load group members');
+    }
+  };
 
+  // This filteredNotes implementation has been moved up to line ~500
+
+  // Update createNote function to handle group notes
+  const createNote = async () => {
+    try {
       const newNote = {
         title: 'Untitled Note',
         content: '',
         user_id: user.id,
-        project_id: isGroupMode ? selectedGroup : null, // Set project_id only for group notes
+        project_id: isGroupMode ? selectedGroup : null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -2235,24 +2311,52 @@ function Dashboard() {
 
       if (error) throw error;
 
-      // Add new note to state
-      setNotes(prev => [data, ...prev]);
-      setSelectedNote(data);
-      
-      // Log creation context
-      console.log('Created new note:', {
-        isGroupNote: isGroupMode,
-        groupId: selectedGroup,
-        noteId: data.id
-      });
-
+      // No need to update notes array manually as real-time subscription will handle it
+      setActiveNote(data);
+      setEditingNoteId(data.id);
+      setNoteTitle(data.title);
+      setNoteContent(data.content);
     } catch (error) {
       console.error('Error creating note:', error);
       toast.error('Failed to create note');
     }
   };
 
-  // Add this near other button handlers
+  // Update saveNote function to handle real-time updates
+  const saveNote = async () => {
+    if (!activeNote) return;
+
+    try {
+      const updates = {
+        title: noteTitle,
+        content: noteContent,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('notes')
+        .update(updates)
+        .eq('id', activeNote.id);
+
+      if (error) throw error;
+
+      // No need to update notes array manually as real-time subscription will handle it
+      setEditingNoteId(null);
+      toast.success('Note saved successfully');
+    } catch (error) {
+      console.error('Error saving note:', error);
+      toast.error('Failed to save note');
+    }
+  };
+
+  // Function to trigger the hidden file input for uploads
+  const triggerFileUpload = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  // Add this before the closing div
   const handleChatToggle = () => {
     if (isGroupMode && selectedGroup) {
       setShowChat(!showChat);
@@ -2302,15 +2406,7 @@ function Dashboard() {
     try {
       const loadingToast = toast.loading('Accepting invitation...');
       
-      const { data: inviteData, error: acceptError } = await supabase.functions.invoke('accept-invitation', {
-        body: JSON.stringify({ token })
-      });
-
-      if (acceptError) throw acceptError;
-      
-      if (!inviteData?.groupId) {
-        throw new Error('No group ID received after accepting invitation');
-      }
+      const { groupId } = await acceptGroupInvitation(token, user.id);
 
       // Update notifications list
       setNotifications(prev => prev.filter(n => 
@@ -2321,7 +2417,7 @@ function Dashboard() {
       await fetchGroups();
 
       // Switch to the new group
-      setSelectedGroup(inviteData.groupId);
+      setSelectedGroup(groupId);
       setIsGroupMode(true);
 
       toast.dismiss(loadingToast);
@@ -2430,12 +2526,6 @@ function Dashboard() {
       color: var(--text-primary);
       font-size: 14px;
     }
-
-    .edit-name-input:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
-
     .save-name-btn {
       padding: 6px 12px;
       border-radius: 4px;
@@ -2473,15 +2563,7 @@ function Dashboard() {
     }
 
     .profile-name {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      width: 100%;
-    }
-
-    .profile-name-container {
-      display: flex;
-      align-items: center;
+      display      align-items: center;
       gap: 8px;
       width: 100%;
     }
@@ -2531,6 +2613,196 @@ function Dashboard() {
       }
     }
   `;
+
+  // Add NotificationBell component
+  const NotificationBell = () => {
+    const unreadCount = notifications.filter(n => !n.is_read).length;
+
+    return (
+      <button
+        className="bell-icon"
+        onClick={() => {
+          setShowNotificationsModal(true);
+          markAllNotificationsRead();
+        }}
+        title="Notifications"
+      >
+        <Bell size={20} strokeWidth={2} />
+        {unreadCount > 0 && (
+          <span className="bell-badge">
+            {unreadCount}
+          </span>
+        )}
+      </button>
+    );
+  };
+
+  // Add NotificationItem component
+  const NotificationItem = ({ notification }) => {
+    const getIcon = () => {
+      switch (notification.type) {
+        case 'group_invitation':
+          return <UserPlus size={20} />;
+        case 'group_joined':
+          return <Users size={20} />;
+        case 'note_created':
+          return <FileText size={20} />;
+        default:
+          return <Bell size={20} />;
+      }
+    };
+
+    const getTimeAgo = (date) => {
+      const now = new Date();
+      const notificationDate = new Date(date);
+      const diffInSeconds = Math.floor((now - notificationDate) / 1000);
+      
+      if (diffInSeconds < 60) return 'just now';
+      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+      if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+      return notificationDate.toLocaleDateString();
+    };
+
+    return (
+      <div className={`notification-item${notification.is_read ? ' read' : ''}`}>
+        <div className="notification-icon">
+          {getIcon()}
+        </div>
+        <div className="notification-content">
+          <div className="notification-header">
+            <h4>{notification.title}</h4>
+            <span className="notification-time">
+              {getTimeAgo(notification.created_at)}
+            </span>
+          </div>
+          <p className="notification-message">{notification.message}</p>
+          {notification.type === 'group_invitation' && (
+            <div className="notification-actions">
+              <button
+                className="accept-btn"
+                onClick={() => handleAcceptInvitation(notification.data.invitation_token)}
+              >
+                <Check size={14} />
+                Accept
+              </button>
+              <button
+                className="decline-btn"
+                onClick={() => handleDeclineInvitation(notification.data.invitation_token)}
+              >
+                <X size={14} />
+                Decline
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Add NotificationsModal component
+  const NotificationsModal = () => {
+    return (
+      <div className="modal-backdrop" onClick={() => setShowNotificationsModal(false)}>
+        <div className="modal-content notifications-modal" onClick={e => e.stopPropagation()}>
+          <div className="notifications-header">
+            <h3>Notifications</h3>
+            <div className="notifications-actions">
+              <button
+                className="mark-all-read-btn"
+                onClick={markAllNotificationsRead}
+                disabled={!notifications.some(n => !n.is_read)}
+              >
+                Mark all as read
+              </button>
+              <button
+                className="close-modal-btn"
+                onClick={() => setShowNotificationsModal(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+          <div className="notifications-list">
+            {notifications.length > 0 ? (
+              notifications.map(notification => (
+                <NotificationItem
+                  key={notification.id}
+                  notification={notification}
+                />
+              ))
+            ) : (
+              <div className="no-notifications">
+                <Bell size={24} />
+                <p>No notifications yet</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Render the hidden file input for uploads
+  const renderFileInput = () => (
+    <input
+      ref={fileInputRef}
+      type="file"
+      onChange={handleFileUpload}
+      style={{ display: 'none' }}
+      accept="*/*"
+    />
+  );
+
+  // Enhance renderCollaborators function to show more detailed information
+  const renderCollaborators = () => {
+    if (!isGroupMode || !selectedGroup || !collaborators || Object.keys(collaborators).length === 0) return null;
+    
+    const activeUsers = Object.values(collaborators).filter(Boolean);
+    if (activeUsers.length === 0) return null;
+    
+    return (
+      <div className="collaborators-bar">
+        <div className="collaborators-header">
+          <span className="collaborators-title">Active Contributors</span>
+        </div>
+        <div className="active-users">
+          {activeUsers.map((collaborator, idx) => {
+            const initials = collaborator.user_name 
+              ? collaborator.user_name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
+              : 'U';
+              
+            const statusColors = {
+              typing: '#47e584', // green for active typing
+              viewing: '#3498DB', // blue for viewing 
+              idle: '#aaa' // gray for idle
+            };
+            
+            return (
+              <div key={collaborator.user_id || idx} className="collaborator-item">
+                <div className="collaborator-avatar" style={{ backgroundColor: `rgba(${Math.floor(Math.random()*255)}, ${Math.floor(Math.random()*255)}, ${Math.floor(Math.random()*255)}, 0.2)` }}>
+                  {initials}
+                  <span 
+                    className="status-indicator" 
+                    style={{ backgroundColor: statusColors[collaborator.status] || '#aaa' }}
+                    title={`${collaborator.status === 'typing' ? 'Editing' : collaborator.status === 'viewing' ? 'Viewing' : 'Idle'}`}
+                  />
+                </div>
+                <div className="collaborator-info">
+                  <span className="collaborator-name">
+                    {collaborator.user_name || 'User'}
+                  </span>
+                  <span className="collaborator-status">
+                    {collaborator.status === 'typing' ? 'Editing...' : 
+                     collaborator.status === 'viewing' ? 'Viewing' : 'Idle'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="dashboard-container">
@@ -2621,10 +2893,10 @@ function Dashboard() {
                   {Array(3).fill(0).map((_, i) => (
                     <div key={i} className="group-item loading-skeleton" />
                   ))}
-                      </div>
-                    ) : (
+                </div>
+              ) : (
                 <div className="groups-list">
-                  {groups.map(group => (
+                  {groups.filter(group => group && group.id).map(group => (
                     <div
                       key={group.id}
                       className={`group-item${selectedGroup === group.id ? ' active' : ''}`}
@@ -2637,19 +2909,19 @@ function Dashboard() {
                         )}
                         <div className="group-meta">
                           <span>Created {new Date(group.created_at).toLocaleDateString()}</span>
+                        </div>
                       </div>
-                      </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedGroup(group.id);
-                            setShowInviteModal(true);
-                          }}
-                          className="group-invite-btn"
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          setSelectedGroup(group.id);
+                          setShowInviteModal(true);
+                        }}
+                        className="group-invite-btn"
                         title="Invite Members"
-                        >
-                          <UserPlus size={14} />
-                        </button>
+                      >
+                        <UserPlus size={14} />
+                      </button>
                     </div>
                   ))}
                   
@@ -2711,30 +2983,30 @@ function Dashboard() {
             </div>
             
             <div className="notes-scroll-wrapper">
-              {notesLoading ? (
-                Array(5).fill(0).map((_, i) => (
+              {notesLoading && !notes.length ? (
+                Array(3).fill(0).map((_, i) => (
                   <div key={i} className="note-item loading-skeleton" style={{ height: '80px' }} />
                 ))
               ) : (
                 <>
-                {notesError && (
+                  {notesError && (
                     <div className="error-message">
                       <X size={16} />
                       Failed to load notes. Please try again.
                     </div>
-                )}
-                {(notesFilter ? searchResults : notes)?.filter(note => note !== null).map((note) => (
+                  )}
+                  {(notesFilter ? searchResults : filteredNotes)?.filter(note => note !== null).map((note) => (
                     <div 
-                        key={note.id} 
-                        className={`note-item${activeNote?.id === note.id ? ' active' : ''}`}
-                        onClick={() => handleEdit(note)}
+                      key={note.id} 
+                      className={`note-item${activeNote?.id === note.id ? ' active' : ''}`}
+                      onClick={() => handleEdit(note)}
                     >
-                        <div className="note-title">
-                          <span>{note.title || 'Untitled'}</span>
-                          {note.updated_at && note.updated_at !== note.created_at && (
-                            <span className="note-edited">(edited)</span>
-                          )}
-                        </div>
+                      <div className="note-title">
+                        <span>{note.title || 'Untitled'}</span>
+                        {note.updated_at && note.updated_at !== note.created_at && (
+                          <span className="note-edited">(edited)</span>
+                        )}
+                      </div>
                       <div className="note-meta">
                           <span>{new Date(note.created_at).toLocaleDateString(undefined, {
                             month: 'short',
@@ -2756,13 +3028,29 @@ function Dashboard() {
                     <div className="empty-state">
                       <div className="empty-icon">
                         <Plus size={20} strokeWidth={2.5} />
-              </div>
+                      </div>
                       <p>No {isGroupMode ? 'group ' : ''}notes yet</p>
                       <button className="new-note-btn" onClick={handleNewNote}>
                         <Plus size={16} strokeWidth={2.5} />
                         Create your first {isGroupMode ? 'group ' : ''}note
                       </button>
                     </div>
+                  )}
+                  {!notesFilter && !isGroupMode && hasMore && (
+                    <button 
+                      className="load-more-btn" 
+                      onClick={handleLoadMore}
+                      disabled={notesLoading}
+                    >
+                      {notesLoading && page > 0 ? (
+                        <span className="loading-spinner" />
+                      ) : (
+                        'Load More Notes'
+                      )}
+                    </button>
+                  )}
+                  {notesLoading && notes.length > 0 && (
+                    <div className="note-item loading-skeleton" style={{ height: '80px' }} />
                   )}
                 </>
               )}
@@ -2907,21 +3195,7 @@ function Dashboard() {
               </button>
             </div>
             <div className="user-section">
-              <button
-                className="bell-icon"
-                onClick={() => {
-                  setShowNotificationsModal(true);
-                  markAllNotificationsRead();
-                }}
-                title="Notifications"
-              >
-                <Bell size={20} strokeWidth={2} />
-                {notifications.filter(n => !n.is_read).length > 0 && (
-                  <span className="bell-badge">
-                    {notifications.filter(n => !n.is_read).length}
-                  </span>
-                )}
-              </button>
+              <NotificationBell />
               <button
                 ref={profileRef}
                 className="profile-button"
@@ -2946,7 +3220,7 @@ function Dashboard() {
                       <div className="profile-name">
                         {editingName ? (
                           <div className="edit-name-form">
-                            <input
+                <input
                               type="text"
                               value={newName}
                               onChange={(e) => setNewName(e.target.value)}
@@ -3096,60 +3370,8 @@ function Dashboard() {
         </main>
       </div>
 
-      {/* Notifications Modal */}
-      {showNotificationsModal && (
-        <div className="notifications-modal">
-          <div className="notifications-header">
-            <span className="notifications-title">Notifications</span>
-            <button
-              className="notification-action-btn"
-          onClick={() => setShowNotificationsModal(false)}
-        >
-              <X size={16} />
-            </button>
-          </div>
-          <div className="notifications-list">
-            {notifications.length === 0 ? (
-              <div className="empty-state">
-                <p>No notifications</p>
-              </div>
-            ) : (
-              notifications.map(notification => (
-                <div 
-                  key={notification.id} 
-                  className={`notification-item ${!notification.is_read ? 'unread' : ''}`}
-                >
-                  <div className="notification-content">
-                    {notification.message}
-            </div>
-                  <div className="notification-meta">
-                    <span className="notification-time">
-                      {new Date(notification.created_at).toLocaleDateString()}
-                    </span>
-                    <div className="notification-actions">
-                      {notification.is_read ? (
-            <button
-                          className="notification-action-btn"
-                          onClick={() => markNotificationUnread(notification.id)}
-                        >
-                          Mark as unread
-            </button>
-                      ) : (
-                        <button
-                          className="notification-action-btn"
-                          onClick={() => markNotificationRead(notification.id)}
-                        >
-                          Mark as read
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {showNotificationsModal && <NotificationsModal />}
+      
       {/* Add the modal UI */}
       {showRoleModal && (
         <Modal onClose={() => setShowRoleModal(false)}>

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import '../App.css';
 import { toast } from 'react-hot-toast';
@@ -11,29 +11,81 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [redirecting, setRedirecting] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [showResendButton, setShowResendButton] = useState(false);
+  const [isResetMode, setIsResetMode] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
-  useEffect(() => {
-    // Check for email confirmation success
-    const checkEmailConfirmation = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      // If we have a confirmation_success parameter and a session, the email was just confirmed
-      if (searchParams.get('confirmation_success') && session) {
-        toast.success('Email confirmed successfully! You can now log in.');
-      }
-    };
+  const handleResendVerification = async () => {
+    if (!email) return;
     
-    checkEmailConfirmation();
-  }, [searchParams]);
+    setResendingEmail(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/login`
+        }
+      });
+
+      if (error) throw error;
+      
+      toast.success('Verification email resent! Please check your inbox.');
+    } catch (err) {
+      console.error('Error resending verification:', err);
+      toast.error('Failed to resend verification email');
+    } finally {
+      setResendingEmail(false);
+    }
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!email) {
+      setError('Please enter your email address');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) throw error;
+
+      setResetEmailSent(true);
+      toast.success('Password reset instructions sent to your email!');
+    } catch (err) {
+      console.error('Reset password error:', err);
+      setError(err.message);
+      toast.error('Failed to send reset instructions');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
+    setShowResendButton(false);
 
     try {
+      // First check if the email exists and is verified
+      const { data: existingUser, error: existingError } = await supabase
+        .from('users')
+        .select('email_confirmed_at')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (existingUser && !existingUser.email_confirmed_at) {
+        setShowResendButton(true);
+        throw new Error('Please verify your email before logging in. Check your inbox for the verification link.');
+      }
+
       // First ensure we're starting fresh
       await supabase.auth.signOut();
       
@@ -44,14 +96,20 @@ const LoginPage = () => {
       });
       
       if (supabaseError) {
-        if (supabaseError.message.includes('Email not confirmed')) {
-          throw new Error('Please check your email and confirm your account before logging in.');
+        if (supabaseError.message.includes('Invalid login credentials')) {
+          throw new Error('Invalid email or password. Please try again.');
         }
         throw supabaseError;
       }
 
       if (!data?.session) {
         throw new Error('Login failed: No session received.');
+      }
+
+      // Check if email is verified
+      if (!data.user.email_confirmed_at) {
+        setShowResendButton(true);
+        throw new Error('Please verify your email before logging in. Check your inbox for the verification link.');
       }
 
       // Initialize the session
@@ -64,13 +122,7 @@ const LoginPage = () => {
         throw new Error('Login succeeded but user verification failed.');
       }
 
-      // Verify email is confirmed
-      if (!user.email_confirmed_at) {
-        throw new Error('Please check your email and confirm your account before logging in.');
-      }
-
       setRedirecting(true);
-      // Successful login
       navigate('/dashboard');
       toast.success('Welcome back!');
     } catch (err) {
@@ -88,7 +140,9 @@ const LoginPage = () => {
         {/* Left Section - Logo and Welcome */}
         <div className="signup-left-section">
           <span className="warq-logo-container" style={{ fontSize: '80px', marginBottom: '15px' }}>WARQ</span>
-          <h3>Welcome Back!</h3>
+          <h3 style={{ color: '#47e584', fontSize: '24px', marginTop: '20px' }}>
+            {isResetMode ? 'Reset Password' : 'Welcome Back'}
+          </h3>
         </div>
 
         {/* Divider */}
@@ -97,71 +151,180 @@ const LoginPage = () => {
         {/* Right Section - Login Form */}
         <div className="signup-right-section">
           <div className="signup-form-container">
-            <h2>Log In</h2>
-            <form onSubmit={handleSubmit}>
-              <div className="signup-input-group">
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
+            <h2>{isResetMode ? 'Reset Password' : 'Log In'}</h2>
+            
+            {isResetMode ? (
+              <form onSubmit={handleForgotPassword}>
+                <div className="signup-input-group">
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
 
-              <div className="signup-input-group">
-                <input
-                  type="password"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
+                {error && (
+                  <div style={{ 
+                    color: '#ff4d4d', 
+                    marginBottom: '16px',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    backgroundColor: 'rgba(255, 77, 77, 0.1)',
+                    border: '1px solid #ff4d4d'
+                  }}>
+                    {error}
+                  </div>
+                )}
 
-              {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+                {resetEmailSent && (
+                  <div style={{ 
+                    color: '#47e584', 
+                    marginBottom: '16px',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    backgroundColor: 'rgba(71, 229, 132, 0.1)',
+                    border: '1px solid #47e584'
+                  }}>
+                    Check your email for password reset instructions!
+                  </div>
+                )}
 
-              <button
-                type="submit"
-                className="signup-submit-btn"
-                disabled={loading}
-              >
-                {loading ? 'Logging In...' : 'Log In'}
-              </button>
-
-              <div className="signup-link-container">
-                <p>Don't have an account?</p>
-                <Link 
-                  to="/signup" 
-                  className="signup-link"
+                <button 
+                  type="submit" 
+                  className="signup-submit-btn"
+                  disabled={loading || !email}
+                  style={{
+                    opacity: (loading || !email) ? 0.7 : 1,
+                    cursor: (loading || !email) ? 'not-allowed' : 'pointer'
+                  }}
                 >
-                  Create an account
-                </Link>
-              </div>
-            </form>
+                  {loading ? 'Sending...' : 'Send Reset Instructions'}
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setIsResetMode(false);
+                    setError('');
+                    setResetEmailSent(false);
+                  }}
+                  className="signup-submit-btn"
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: '2px solid #47e584',
+                    color: '#47e584',
+                    marginTop: '10px'
+                  }}
+                >
+                  Back to Login
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleSubmit}>
+                <div className="signup-input-group">
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="signup-input-group">
+                  <input
+                    type="password"
+                    placeholder="Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {error && (
+                  <div style={{ 
+                    color: '#ff4d4d', 
+                    marginBottom: '16px',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    backgroundColor: 'rgba(255, 77, 77, 0.1)',
+                    border: '1px solid #ff4d4d'
+                  }}>
+                    {error}
+                  </div>
+                )}
+
+                {showResendButton && (
+                  <button
+                    type="button"
+                    className="signup-submit-btn"
+                    onClick={handleResendVerification}
+                    disabled={resendingEmail}
+                    style={{
+                      backgroundColor: 'transparent',
+                      border: '2px solid #47e584',
+                      color: '#47e584',
+                      marginBottom: '16px'
+                    }}
+                  >
+                    {resendingEmail ? 'Sending...' : 'Resend Verification Email'}
+                  </button>
+                )}
+
+                <button 
+                  type="submit" 
+                  className="signup-submit-btn"
+                  disabled={loading || redirecting}
+                  style={{
+                    opacity: (loading || redirecting) ? 0.7 : 1,
+                    cursor: (loading || redirecting) ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {loading ? <Spinner /> : redirecting ? 'Redirecting...' : 'Log In'}
+                </button>
+
+                <div style={{
+                  textAlign: 'center',
+                  marginTop: '20px',
+                  color: '#ababab'
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsResetMode(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#47e584',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      padding: '0',
+                      margin: '0 0 10px 0',
+                      width: 'auto'
+                    }}
+                  >
+                    Forgot Password?
+                  </button>
+                  <div>
+                    <p style={{ display: 'inline' }}>Don't have an account? </p>
+                    <Link 
+                      to="/signup" 
+                      style={{
+                        color: '#47e584',
+                        textDecoration: 'none',
+                        marginLeft: '5px'
+                      }}
+                    >
+                      Sign Up
+                    </Link>
+                  </div>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       </div>
-      {(loading || redirecting) && <Spinner />}
-      <style>{`
-        .signup-link-container {
-          margin-top: 1.5rem;
-          text-align: center;
-          color: #ffffff;
-        }
-        .signup-link {
-          display: inline-block;
-          margin-top: 0.5rem;
-          color: #47e584;
-          text-decoration: none;
-          font-weight: 500;
-          transition: color 0.2s ease;
-        }
-        .signup-link:hover {
-          color: #03ae45;
-          text-decoration: underline;
-        }
-      `}</style>
     </div>
   );
 };

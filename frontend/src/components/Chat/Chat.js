@@ -9,9 +9,14 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const messagesEndRef = useRef(null);
   const chatContentRef = useRef(null);
   const channelRef = useRef(null);
+  const oldestMessageRef = useRef(null);
+
+  const PAGE_SIZE = 30;
 
   // Scroll to bottom of messages
   const scrollToBottom = () => {
@@ -35,9 +40,23 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
     }
   }, [projectId]);
 
+  // Infinite scroll: load more when scrolled to top
+  useEffect(() => {
+    const container = chatContentRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      if (container.scrollTop === 0 && hasMore && !loadingMore && messages.length > 0) {
+        loadOlderMessages();
+      }
+    };
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [hasMore, loadingMore, messages]);
+
   const loadMessages = async () => {
     try {
       setLoading(true);
+      setHasMore(true);
       
       // First, verify project membership
       const { data: membership, error: membershipError } = await supabase
@@ -77,17 +96,20 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
         `)
         .eq('project_id', projectId)
         .in('user_id', memberIds)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
 
       if (messagesError) throw messagesError;
 
       // Transform messages to include user names
-      const transformedMessages = messages.map(message => ({
+      const transformedMessages = (messages || []).map(message => ({
         ...message,
         userName: message.users?.name || 'Unknown User'
-      }));
+      })).reverse();
 
       setMessages(transformedMessages);
+      if (messages && messages.length < PAGE_SIZE) setHasMore(false);
+      oldestMessageRef.current = transformedMessages[0]?.created_at || null;
     } catch (error) {
       console.error('Error loading messages:', error);
       toast.error('Failed to load messages');
@@ -183,6 +205,72 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
     }
   };
 
+  const loadOlderMessages = async () => {
+    if (!oldestMessageRef.current) return;
+    setLoadingMore(true);
+    try {
+      // First, verify project membership
+      const { data: membership, error: membershipError } = await supabase
+        .from('project_members')
+        .select('status')
+        .eq('project_id', projectId)
+        .eq('user_id', userId)
+        .single();
+
+      if (membershipError || !membership || membership.status !== 'accepted') {
+        throw new Error('Not a member of this project');
+      }
+
+      // Then, get the list of accepted members for this project
+      const { data: acceptedMembers, error: membersError } = await supabase
+        .from('project_members')
+        .select('user_id')
+        .eq('project_id', projectId)
+        .eq('status', 'accepted');
+
+      if (membersError) throw membersError;
+
+      const memberIds = acceptedMembers.map(member => member.user_id);
+
+      // Load older messages
+      const { data: messages, error: messagesError } = await supabase
+        .from('project_chats')
+        .select(`
+          id,
+          content,
+          user_id,
+          created_at,
+          users (
+            name,
+            email
+          )
+        `)
+        .eq('project_id', projectId)
+        .in('user_id', memberIds)
+        .lt('created_at', oldestMessageRef.current)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+
+      if (messagesError) throw messagesError;
+
+      const transformedMessages = (messages || []).map(message => ({
+        ...message,
+        userName: message.users?.name || 'Unknown User'
+      })).reverse();
+
+      setMessages(current => [...transformedMessages, ...current]);
+      if (!messages || messages.length < PAGE_SIZE) setHasMore(false);
+      if (transformedMessages.length > 0) {
+        oldestMessageRef.current = transformedMessages[0].created_at;
+      }
+    } catch (error) {
+      console.error('Error loading older messages:', error);
+      toast.error('Failed to load older messages');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString('en-US', {
       hour: '2-digit',
@@ -205,6 +293,12 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
             <div className="loading-messages">Loading messages...</div>
           ) : (
             <>
+              {hasMore && !loadingMore && (
+                <button className="load-more-btn" onClick={loadOlderMessages} disabled={loadingMore}>
+                  Load older messages
+                </button>
+              )}
+              {loadingMore && <div className="loading-messages">Loading older messages...</div>}
               {messages.map((message) => (
                 <div
                   key={message.id}
@@ -251,4 +345,4 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
   );
 };
 
-export default Chat; 
+export default Chat;

@@ -19,7 +19,7 @@ export async function isAuthenticated() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return false;
   const { user } = session;
-  return !!(user && user.email_confirmed_at);
+  return !!user && !!user.email_confirmed_at;
 }
 
 // File handling functions

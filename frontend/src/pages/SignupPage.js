@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import '../App.css';
 import { supabase } from '../services/supabase';
-import { sendWelcomeEmail } from '../services/emailService';
 import Spinner from '../components/Spinner';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import { acceptGroupInvitation } from '../services/groupService';
 
 // Helper function to get the network URL
 const getNetworkUrl = () => {
@@ -20,6 +20,8 @@ const SignUpPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [showResendButton, setShowResendButton] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const invitationToken = searchParams.get('token');
@@ -56,25 +58,21 @@ const SignUpPage = () => {
   }, [formData.password]);
 
   useEffect(() => {
-    // Check if there's an invitation token and pre-fill email
+    // Check if there's an invitation token
     const checkInvitation = async () => {
       if (!invitationToken) return;
       try {
         const { data: invitation, error } = await supabase
           .from('projects_invitations')
-          .select('invited_email, project:project_id(title)')
+          .select('project:project_id(title)')
           .eq('invitation_token', invitationToken)
           .eq('status', 'pending')
           .gt('expires_at', new Date().toISOString())
           .single();
 
         if (error) throw error;
-        if (invitation?.invited_email) {
-          setFormData(prevState => ({
-            ...prevState,
-            email: invitation.invited_email
-          }));
-          toast.success(`You've been invited to join ${invitation.project?.title || 'a group'}!`);
+        if (invitation?.project?.title) {
+          toast.success(`You've been invited to join ${invitation.project.title}!`);
         }
       } catch (err) {
         console.error('Error checking invitation:', err);
@@ -84,12 +82,56 @@ const SignUpPage = () => {
     checkInvitation();
   }, [invitationToken]);
 
+  // Add resend verification email function
+  const handleResendVerification = async () => {
+    if (!formData.email) return;
+    
+    setResendingEmail(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: formData.email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/login`
+        }
+      });
+
+      if (error) throw error;
+      
+      toast.success('Verification email resent! Please check your inbox.');
+      setSuccess('A new verification email has been sent. Please check your inbox.');
+    } catch (err) {
+      console.error('Error resending verification:', err);
+      setError('Failed to resend verification email. Please try again.');
+      toast.error('Failed to resend verification email');
+    } finally {
+      setResendingEmail(false);
+    }
+  };
+
   async function handleSignup(email, password, invitationToken) {
     try {
-      // Sign up user first
+      // First check if the email already exists and is verified
+      const { data: existingUser, error: existingError } = await supabase
+        .from('users')
+        .select('email_confirmed_at')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (existingUser?.email_confirmed_at) {
+        return { error: 'This email is already registered. Please log in instead.' };
+      }
+
+      // Sign up user with email confirmation enabled
       const { data: authData, error: signupError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/login`,
+          data: {
+            full_name: formData.name,
+          }
+        }
       });
 
       if (signupError) {
@@ -97,36 +139,31 @@ const SignUpPage = () => {
         return { error: signupError.message };
       }
 
-      // Send welcome email
-      await sendWelcomeEmail(email);
-      console.log('Welcome email sent to:', email);
+      // Check if email confirmation is needed
+      if (authData?.user?.identities?.length === 0) {
+        // Email exists but might not be verified
+        return { 
+          error: 'This email address is registered but not verified. Please check your email for the verification link, or request a new one.',
+          needsVerification: true 
+        };
+      }
 
-      // Accept invitation only after successful signup
+      if (!authData?.user?.confirmed_at) {
+        return { 
+          data: authData,
+          message: 'Please check your email for the verification link before logging in.',
+          needsVerification: true
+        };
+      }
+
+      // If email is already confirmed, handle invitation if present
       if (invitationToken) {
-        const { data: invitation, error } = await supabase
-          .from('projects_invitations')
-          .select('invited_email, project:project_id(title)')
-          .eq('invitation_token', invitationToken)
-          .eq('status', 'pending')
-          .gt('expires_at', new Date().toISOString())
-          .maybeSingle();
-
-        if (error || !invitation) {
-          console.error('Invitation error:', error?.message || 'No valid invitation');
-          return { error: 'Invalid or expired invitation' };
+        try {
+          await acceptGroupInvitation(invitationToken, authData.user.id);
+        } catch (error) {
+          console.error('Error accepting invitation:', error);
+          return { error: error.message };
         }
-
-        // Accept invitation
-        const { data, error: acceptError } = await supabase.functions.invoke('accept-invitation', {
-          body: { token: invitationToken },
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        });
-
-        if (acceptError) {
-          console.error('Accept invitation error:', acceptError);
-          return { error: 'Failed to accept invitation' };
-        }
-        console.log('Invitation accepted:', data);
       }
 
       return { data: authData };
@@ -141,42 +178,27 @@ const SignUpPage = () => {
     setLoading(true);
     setError('');
     setSuccess('');
+    setShowResendButton(false);
+
+    if (!formData.name || !formData.email || !formData.password) {
+      setError('Please fill in all fields');
+      setLoading(false);
+      return;
+    }
 
     try {
-      // Input validation
-      if (!formData.name.trim()) {
-        setError('Name is required');
-        setLoading(false);
-        return;
-      }
-      if (!formData.email.trim()) {
-        setError('Email is required');
-        setLoading(false);
-        return;
-      }
-      if (!formData.password || formData.password.length < 6) {
-        setError('Password must be at least 6 characters');
-        setLoading(false);
-        return;
-      }
-      if (passwordStrength === 'weak') {
-        setError('Please choose a stronger password');
-        setLoading(false);
-        return;
-      }
-
-      console.log("Starting signup process...");
-
       const result = await handleSignup(formData.email, formData.password, invitationToken);
 
       if (result.error) {
         setError(result.error);
+        // Show resend button if the error indicates unverified email
+        if (result.needsVerification) {
+          setShowResendButton(true);
+        }
         setLoading(false);
         return;
       }
 
-      setSuccess('Sign up successful! Please check your email to verify your account.');
-      
       // Clear form data
       setFormData({
         name: '',
@@ -184,12 +206,17 @@ const SignUpPage = () => {
         password: ''
       });
 
-      // Redirect based on whether there was an invitation
-      if (result.data) {
-        // Redirect to dashboard with group parameter
-        navigate(`/dashboard`);
+      // Show success message if email verification is needed
+      if (result.message) {
+        setSuccess(result.message);
+        toast.success(result.message);
+        if (result.needsVerification) {
+          setShowResendButton(true);
+        }
       } else {
+        // If email is already verified, redirect to dashboard
         navigate('/dashboard');
+        toast.success('Account created successfully!');
       }
 
     } catch (err) {
@@ -206,7 +233,9 @@ const SignUpPage = () => {
         {/* Left Section - Logo and Welcome */}
         <div className="signup-left-section">
           <span className="warq-logo-container" style={{ fontSize: '80px', marginBottom: '15px' }}>WARQ</span>
-          <h3>{invitationToken ? "Accept Invitation" : "Create Account"}</h3>
+          <h3 style={{ color: '#47e584', fontSize: '24px', marginTop: '20px' }}>
+            {invitationToken ? "Accept Invitation" : "Create Account"}
+          </h3>
         </div>
 
         {/* Divider */}
@@ -237,6 +266,10 @@ const SignUpPage = () => {
                   onChange={handleChange}
                   required
                   disabled={invitationToken && formData.email}
+                  style={{ 
+                    opacity: (invitationToken && formData.email) ? 0.7 : 1,
+                    cursor: (invitationToken && formData.email) ? 'not-allowed' : 'text'
+                  }}
                 />
               </div>
 
@@ -250,10 +283,19 @@ const SignUpPage = () => {
                   required
                 />
                 {formData.password && (
-                  <div className={`password-strength ${passwordStrength}`}>
+                  <div className="password-strength" style={{
+                    marginTop: '8px',
+                    fontSize: '14px',
+                    color: passwordStrength === 'weak' ? '#ff4d4d' : 
+                           passwordStrength === 'medium' ? '#ffd700' : '#47e584'
+                  }}>
                     Password strength: {passwordStrength}
                     {passwordStrength === 'weak' && (
-                      <div className="password-tips">
+                      <div className="password-tips" style={{
+                        fontSize: '12px',
+                        color: '#ababab',
+                        marginTop: '4px'
+                      }}>
                         Include uppercase, lowercase, numbers, and special characters
                       </div>
                     )}
@@ -261,22 +303,74 @@ const SignUpPage = () => {
                 )}
               </div>
 
-              {error && <div style={{ color: 'red', marginBottom: '8px' }}>{error}</div>}
-              {success && <div style={{ color: 'green', marginBottom: '8px' }}>{success}</div>}
+              {error && (
+                <div style={{ 
+                  color: '#ff4d4d', 
+                  marginBottom: '16px',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  backgroundColor: 'rgba(255, 77, 77, 0.1)',
+                  border: '1px solid #ff4d4d'
+                }}>
+                  {error}
+                </div>
+              )}
+              
+              {success && (
+                <div style={{ 
+                  color: '#47e584', 
+                  marginBottom: '16px',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  backgroundColor: 'rgba(71, 229, 132, 0.1)',
+                  border: '1px solid #47e584'
+                }}>
+                  {success}
+                </div>
+              )}
+
+              {showResendButton && (
+                <button
+                  type="button"
+                  className="signup-submit-btn"
+                  onClick={handleResendVerification}
+                  disabled={resendingEmail}
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: '2px solid #47e584',
+                    color: '#47e584',
+                    marginBottom: '16px'
+                  }}
+                >
+                  {resendingEmail ? 'Sending...' : 'Resend Verification Email'}
+                </button>
+              )}
 
               <button
                 type="submit"
                 className="signup-submit-btn"
                 disabled={loading || passwordStrength === 'weak'}
+                style={{
+                  opacity: (loading || passwordStrength === 'weak') ? 0.7 : 1,
+                  cursor: (loading || passwordStrength === 'weak') ? 'not-allowed' : 'pointer'
+                }}
               >
                 {loading ? 'Creating Account...' : 'Sign Up'}
               </button>
 
-              <div className="signup-link-container">
-                <p>Already have an account?</p>
+              <div style={{
+                textAlign: 'center',
+                marginTop: '20px',
+                color: '#ababab'
+              }}>
+                <p style={{ display: 'inline' }}>Already have an account? </p>
                 <Link 
                   to="/login" 
-                  className="signup-link"
+                  style={{
+                    color: '#47e584',
+                    textDecoration: 'none',
+                    marginLeft: '5px'
+                  }}
                 >
                   Log In
                 </Link>

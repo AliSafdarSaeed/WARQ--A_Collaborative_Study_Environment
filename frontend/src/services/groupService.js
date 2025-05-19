@@ -1,7 +1,4 @@
 import { supabase } from './supabase';
-import { sendInvitationEmail } from './emailService';
-import { v4 as uuidv4 } from 'uuid';
-import { getInvitationEmailTemplate } from './emailTemplates';
 
 // Create a new group
 export const createGroup = async (name, description = '') => {
@@ -33,7 +30,8 @@ export const createGroup = async (name, description = '') => {
       .insert([{
         project_id: group.id,
         user_id: session.user.id,
-        status: 'accepted'
+        status: 'accepted',
+        role: 'admin' // Add role for the creator
       }]);
 
     if (memberError) throw memberError;
@@ -45,244 +43,338 @@ export const createGroup = async (name, description = '') => {
   }
 };
 
-// Send group invitation
-export const inviteToGroup = async (groupId, email) => {
+// Invite a user to a group (internal, by userId)
+export const inviteUserToGroup = async (groupId, userId, inviterId) => {
+  // First verify if the inviter has permission to invite
+  const { data: inviterRole, error: roleError } = await supabase
+    .from('project_members')
+    .select('role')
+    .eq('project_id', groupId)
+    .eq('user_id', inviterId)
+    .single();
+
+  if (roleError || !inviterRole || !['admin', 'moderator'].includes(inviterRole.role)) {
+    throw new Error('You do not have permission to invite users to this group');
+  }
+
+  // Check if user exists
+  const { data: userExists, error: userError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', userId)
+    .single();
+
+  if (userError || !userExists) {
+    throw new Error('User not found');
+  }
+
+  // Check if already invited or member
+  const { data: existing, error: checkError } = await supabase
+    .from('projects_invitations')
+    .select()
+    .eq('project_id', groupId)
+    .eq('invited_user_id', userId)
+    .eq('status', 'pending')
+    .maybeSingle();
+  if (checkError) throw checkError;
+  if (existing) return { reused: true, invitation: existing };
+
+  // Get group details for notification
+  const { data: group, error: groupError } = await supabase
+    .from('projects')
+    .select('title')
+    .eq('id', groupId)
+    .single();
+  if (groupError) throw groupError;
+
+  // Create invitation
+  const { data: invitation, error: createError } = await supabase
+    .from('projects_invitations')
+    .insert([{
+      project_id: groupId,
+      invited_user_id: userId,
+      invited_by: inviterId,
+      status: 'pending',
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+      invitation_token: crypto.randomUUID()
+    }])
+    .select()
+    .single();
+  if (createError) throw createError;
+
+  // Create notification
+  const { error: notifyError } = await supabase.from('notifications').insert([{
+    user_id: userId,
+    type: 'group_invitation',
+    title: 'New Group Invitation',
+    message: `You have been invited to join ${group.title}`,
+    data: { 
+      group_id: groupId,
+      group_title: group.title,
+      invitation_token: invitation.invitation_token,
+      inviter_id: inviterId
+    },
+    is_read: false,
+    created_at: new Date().toISOString()
+  }]);
+
+  if (notifyError) throw notifyError;
+
+  return { invitation, reused: false };
+};
+
+// Accept a group invitation
+export const acceptGroupInvitation = async (invitationToken, userId) => {
+  // Get invitation with group details
+  const { data: invitation, error: inviteError } = await supabase
+    .from('projects_invitations')
+    .select(`
+      project_id,
+      status,
+      projects (
+        title
+      )
+    `)
+    .eq('invitation_token', invitationToken)
+    .eq('invited_user_id', userId)
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (inviteError || !invitation) {
+    throw inviteError || new Error('Invalid or expired invitation');
+  }
+
+  // Start a transaction
   try {
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !session) {
-      throw new Error('Authentication required');
-    }
+  // Add to project_members
+  const { error: memberError } = await supabase
+    .from('project_members')
+    .insert({
+      user_id: userId,
+      project_id: invitation.project_id,
+      status: 'accepted',
+        role: 'member',
+      joined_at: new Date().toISOString()
+    });
+  if (memberError) throw memberError;
 
-    // Get group details first
-    const { data: group, error: groupError } = await supabase
-      .from('projects')
-      .select('title')
-      .eq('id', groupId)
-      .single();
+  // Mark invitation as accepted
+    const { error: updateError } = await supabase
+    .from('projects_invitations')
+    .update({ status: 'accepted' })
+    .eq('invitation_token', invitationToken);
+    if (updateError) throw updateError;
 
-    if (groupError) throw groupError;
-
-    // Check if user already exists in auth.users
-    const { data: existingUser, error: userError } = await supabase
-      .from('users')
-      .select('id, email')
-      .eq('email', email.toLowerCase())
-      .maybeSingle();
-
-    if (userError && userError.code !== 'PGRST116') {
-      console.error('Error checking existing user:', userError);
-      throw userError;
-    }
-
-    // Check if user is already a member of the group
-    if (existingUser?.id) {
-      const { data: existingMember } = await supabase
-        .from('project_members')
-        .select()
-        .eq('project_id', groupId)
-        .eq('user_id', existingUser.id)
-        .single();
-
-      if (existingMember) {
-        throw new Error('User is already a member of this group');
-      }
-    }
-
-    // Check if invitation already exists
-    const { data: existing, error: checkError } = await supabase
-      .from('projects_invitations')
-      .select()
-      .eq('project_id', groupId)
-      .eq('invited_email', email.toLowerCase())
-      .eq('status', 'pending')
-      .maybeSingle();
-
-    if (checkError && checkError.code !== 'PGRST116') {
-      console.error('Error checking existing invitation:', checkError);
-      throw checkError;
-    }
-
-    if (existing) {
-      return { invitation: existing, reused: true };
-    }
-
-    // Set expiration to 7 days from now
-    const expires_at = new Date();
-    expires_at.setDate(expires_at.getDate() + 7);
-
-    // Generate invitation token
-    const invitation_token = uuidv4();
-
-    // Create new invitation
-    const { data: invitation, error: createError } = await supabase
-      .from('projects_invitations')
+    // Create success notification
+    const { error: notifyError } = await supabase
+      .from('notifications')
       .insert([{
-        project_id: groupId,
-        invited_email: email.toLowerCase(),
-        invited_user_id: existingUser?.id || null,
-        invited_by: session.user.id,
-        status: 'pending',
-        expires_at: expires_at.toISOString(),
-        invitation_token: invitation_token
-      }])
-      .select()
-      .single();
-
-    if (createError) {
-      console.error('Error creating invitation:', createError);
-      throw createError;
-    }
-
-    // If user exists, create in-app notification
-    if (existingUser?.id) {
-      const { error: notifyError } = await supabase.from('notifications').insert([{
-        user_id: existingUser.id,
-        type: 'group_invitation',
-        title: 'New Group Invitation',
-        message: `${session.user.email} has invited you to join "${group.title}"`,
-        data: {
-          group_id: groupId,
-          group_title: group.title,
-          invitation_token: invitation.invitation_token
-        },
+        user_id: userId,
+        type: 'group_joined',
+        title: 'Group Joined',
+        message: `You have successfully joined ${invitation.projects.title}`,
+        data: { group_id: invitation.project_id },
         is_read: false,
         created_at: new Date().toISOString()
       }]);
+    if (notifyError) throw notifyError;
 
-      if (notifyError) {
-        console.error('Error creating notification:', notifyError);
-      }
-
-      // Also send a real-time notification
-      const notificationChannel = supabase.channel('custom-insert-channel')
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'notifications' },
-          (payload) => {
-            console.log('Change received!', payload);
-          }
-        )
-        .subscribe();
-    }
-
-    // Send email invitation (always, for both new and existing users)
-    const baseUrl = process.env.NODE_ENV === 'production'
-      ? 'https://warq-study-platform.vercel.app'
-      : window.location.origin;
-    const acceptUrl = `${baseUrl}/signup?token=${invitation.invitation_token}`;
-    const inviterName = session.user.user_metadata?.name || session.user.email.split('@')[0];
-    const groupName = group.title;
-    const html = getInvitationEmailTemplate({ groupName, inviterName, acceptUrl });
-    const text = `You've been invited to join ${groupName} on WARQ by ${inviterName}. Accept here: ${acceptUrl}`;
-    await supabase.functions.invoke('send-email', {
-      body: {
-        to: email,
-        subject: `You've been invited to join ${groupName} on WARQ`,
-        text,
-        html
-      }
-    });
-
-    return { invitation, reused: false };
+  return { groupId: invitation.project_id };
   } catch (error) {
-    console.error('Invitation error:', error);
+    console.error('Error accepting invitation:', error);
     throw error;
   }
 };
 
-// Accept group invitation
-export const acceptInvitation = async (token) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  // Begin transaction to accept invitation
-  const { error: acceptError } = await supabase
-    .rpc('accept_group_invitation', {
-      p_token: token,
-      p_user_id: user.id
-    });
-
-  if (acceptError) throw acceptError;
-
-  // Get the group details to return
-  const { data: invitation } = await supabase
-    .from('projects_invitations')
-    .select('*, projects(*)')
-    .eq('invitation_token', token)
-    .single();
-
-  return invitation.projects;
-};
-
-// Get user's groups
-export const getUserGroups = async () => {
+// Get user's groups with real-time subscription
+export const getUserGroups = async (userId) => {
   const { data: memberships, error } = await supabase
     .from('project_members')
     .select(`
       project_id,
+      role,
       projects (
         id,
         title,
         description,
         created_at,
-        created_by
+        created_by,
+        user_id
       )
     `)
+    .eq('user_id', userId)
     .eq('status', 'accepted');
 
   if (error) throw error;
-
-  return memberships.map(m => ({
-    ...m.projects
-  }));
+  return memberships.map(m => ({ ...m.projects, role: m.role }));
 };
 
-// Get group members
+// Get group members with roles
 export const getGroupMembers = async (groupId) => {
   const { data: members, error } = await supabase
     .from('project_members')
     .select(`
       user_id,
+      role,
       joined_at,
       users:user_id (
         id,
         email,
-        raw_user_meta_data->'name' as name
+        user_metadata
       )
     `)
     .eq('project_id', groupId)
     .eq('status', 'accepted');
 
   if (error) throw error;
-
   return members.map(m => ({
     id: m.user_id,
+    role: m.role,
     joinedAt: m.joined_at,
-    ...m.users
+    email: m.users.email,
+    name: m.users.user_metadata?.full_name
   }));
 };
 
-// Get pending invitations for the current user
-export const getPendingInvitations = async () => {
-  try {
-    // Get current user
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    if (authError) throw authError;
-    if (!session) throw new Error('Authentication required');
+// Get pending invitations
+export const getPendingInvitations = async (userId) => {
+  const { data: invitations, error } = await supabase
+    .from('projects_invitations')
+    .select(`
+      *,
+      projects (
+        title
+      ),
+      inviter:invited_by (
+        email,
+        user_metadata
+      )
+    `)
+    .eq('invited_user_id', userId)
+    .eq('status', 'pending')
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false });
 
-    // Get pending invitations
-    const { data: invitations, error: invitationsError } = await supabase
-      .from('projects_invitations')
-      .select('*')
-      .eq('invited_email', session.user.email.toLowerCase())
-      .eq('status', 'pending')
-      .gt('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false });
+  if (error) throw error;
+  return invitations.map(inv => ({
+    ...inv,
+    group_title: inv.projects.title,
+    inviter_name: inv.inviter.user_metadata?.full_name || inv.inviter.email
+  }));
+};
 
-    if (invitationsError) throw invitationsError;
+// Subscribe to invitations with enhanced data
+export const subscribeToInvitations = (userId, callback) => {
+  const channel = supabase
+    .channel(`invitations:${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'projects_invitations',
+        filter: `invited_user_id=eq.${userId}`
+      },
+      async (payload) => {
+        // Enhance the payload with group and inviter details
+        if (payload.new) {
+          const { data: details } = await supabase
+            .from('projects')
+            .select('title')
+            .eq('id', payload.new.project_id)
+            .single();
 
-    return invitations;
-  } catch (error) {
-    console.error('Error fetching pending invitations:', error);
-    throw error;
-  }
+          const { data: inviter } = await supabase
+            .from('users')
+            .select('email, user_metadata')
+            .eq('id', payload.new.invited_by)
+            .single();
+
+          payload.new.group_title = details?.title;
+          payload.new.inviter_name = inviter?.user_metadata?.full_name || inviter?.email;
+        }
+        callback(payload);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    channel.unsubscribe();
+  };
+};
+
+// Subscribe to realtime updates for group notes
+export const subscribeToGroupNotes = (groupId, callback) => {
+  const channel = supabase
+    .channel(`group-notes:${groupId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'notes',
+        filter: `project_id=eq.${groupId}`
+      },
+      (payload) => {
+        callback(payload);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    channel.unsubscribe();
+  };
+};
+
+// Subscribe to realtime updates for group presence
+export const subscribeToGroupPresence = (groupId, userId, callback) => {
+  const channel = supabase
+    .channel(`presence:${groupId}`)
+    .on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      callback(state);
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await channel.track({
+          user_id: userId,
+          online_at: new Date().toISOString()
+        });
+      }
+    });
+
+  return () => {
+    channel.unsubscribe();
+  };
+};
+
+// Decline a group invitation with notification
+export const declineGroupInvitation = async (invitationToken, userId) => {
+  const { data: invitation, error: getError } = await supabase
+    .from('projects_invitations')
+    .select('project_id, projects (title)')
+    .eq('invitation_token', invitationToken)
+    .eq('invited_user_id', userId)
+    .single();
+
+  if (getError) throw getError;
+
+  const { error: updateError } = await supabase
+    .from('projects_invitations')
+    .update({ status: 'declined' })
+    .eq('invitation_token', invitationToken)
+    .eq('invited_user_id', userId);
+
+  if (updateError) throw updateError;
+
+  // Add notification about declining
+  await supabase.from('notifications').insert([{
+    user_id: userId,
+    type: 'invitation_declined',
+    title: 'Invitation Declined',
+    message: `You declined the invitation to join ${invitation.projects.title}`,
+    data: { group_id: invitation.project_id },
+    is_read: false,
+    created_at: new Date().toISOString()
+  }]);
 };

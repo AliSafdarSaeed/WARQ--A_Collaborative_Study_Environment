@@ -7,7 +7,6 @@ import Dashboard from './pages/MainApp/Dashboard';
 import { supabase } from "./services/supabase";
 import Spinner from "./components/Spinner";
 import JoinProjectPage from './pages/JoinProjectPage';
-import AcceptInvitation from "./pages/AcceptInvitation/AcceptInvitation";
 
 // Improved auth state management
 function App() {
@@ -210,7 +209,6 @@ function App() {
             } 
           />
           <Route path="/join/:projectId" element={<JoinProjectPage />} />
-          <Route path="/accept-invitation" element={<AcceptInvitation />} />
         </Routes>
       </Router>
     </div>

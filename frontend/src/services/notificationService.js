@@ -16,7 +16,7 @@ export async function sendNotification({ userId, type, message, projectId = null
       user_id: userId,
       type,
       message,
-      project_id: projectId,
+      project_id: projectId === '' ? null : projectId, // Ensure empty string is stored as null
       severity,
       is_read: false
     });

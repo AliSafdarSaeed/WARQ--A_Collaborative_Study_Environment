@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import '../App.css';
@@ -133,6 +133,57 @@ const LoginPage = () => {
       setLoading(false);
     }
   };
+
+  // Add this useEffect hook to check for users after email verification redirects
+  useEffect(() => {
+    const checkUserProfileAfterVerification = async () => {
+      try {
+        // Check if there's a user session (which would happen after email verification redirect)
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session) return;
+
+        console.log("User detected on login page after verification:", session.user.id);
+        
+        // Check if user exists in users table
+        const { data: existingProfile, error: fetchError } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          console.error('Error checking user profile:', fetchError);
+          return;
+        }
+
+        // If user doesn't exist in users table, create one
+        if (!existingProfile) {
+          console.log('Creating user record after verification redirect');
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert([
+              {
+                id: session.user.id,
+                email: session.user.email,
+                name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || null,
+                created_at: new Date().toISOString(),
+                email_confirmed_at: session.user.email_confirmed_at || new Date().toISOString()
+              },
+            ]);
+
+          if (insertError) {
+            console.error('Error creating user record after verification:', insertError);
+          } else {
+            console.log('Successfully created user record after verification');
+          }
+        }
+      } catch (err) {
+        console.error("Error handling post-verification user check:", err);
+      }
+    };
+
+    checkUserProfileAfterVerification();
+  }, []);
 
   return (
     <div className="signup-page">

@@ -1,0 +1,224 @@
+.notification-panel {
+  position: absolute;
+  top: calc(var(--header-height) + 8px);
+  right: 16px;
+  width: 400px;
+  max-height: calc(100vh - var(--header-height) - 32px);
+  background: var(--background-lighter);
+  border-radius: 12px;
+  border: 1px solid rgba(71, 229, 132, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  animation: slideIn 0.2s ease;
+}
+
+.notification-header {
+  padding: 16px;
+  border-bottom: 1px solid rgba(71, 229, 132, 0.15);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--background-dark);
+  border-radius: 12px 12px 0 0;
+}
+
+.notification-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-title h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.notification-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.notification-filter {
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--background-lighter);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mark-all-read {
+  background: transparent;
+  border: none;
+  color: var(--primary-color);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.mark-all-read:hover:not(:disabled) {
+  background: rgba(71, 229, 132, 0.1);
+}
+
+.mark-all-read:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notifications-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.notification-item {
+  padding: 16px;
+  background: var(--background-dark);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(71, 229, 132, 0.1);
+  transition: all 0.2s ease;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.notification-item:hover {
+  border-color: rgba(71, 229, 132, 0.2);
+  transform: translateY(-1px);
+}
+
+.notification-item.read {
+  opacity: 0.7;
+}
+
+.notification-content {
+  flex: 1;
+}
+
+.notification-message h4 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.notification-message p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.notification-time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 8px;
+}
+
+.invitation-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.accept-btn,
+.decline-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.accept-btn {
+  background: rgba(71, 229, 132, 0.1);
+  border: 1px solid rgba(71, 229, 132, 0.2);
+  color: var(--primary-color);
+}
+
+.accept-btn:hover {
+  background: rgba(71, 229, 132, 0.15);
+  border-color: rgba(71, 229, 132, 0.3);
+  transform: translateY(-1px);
+}
+
+.decline-btn {
+  background: rgba(255, 99, 99, 0.1);
+  border: 1px solid rgba(255, 99, 99, 0.2);
+  color: #ff6363;
+}
+
+.decline-btn:hover {
+  background: rgba(255, 99, 99, 0.15);
+  border-color: rgba(255, 99, 99, 0.3);
+  transform: translateY(-1px);
+}
+
+.mark-read-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mark-read-btn:hover {
+  background: rgba(71, 229, 132, 0.1);
+  color: var(--primary-color);
+}
+
+.loading-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  color: var(--text-secondary);
+  gap: 12px;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(71, 229, 132, 0.3);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+} 

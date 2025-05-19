@@ -36,7 +36,11 @@ export default function FileUpload({ note, onUpload, userRole, isCollab }) {
     }
 
     const files = Array.from(e.target.files);
-    if (!note || files.length === 0) return;
+    if (!note) {
+      setError('Please select or create a note before uploading.');
+      return;
+    }
+    if (files.length === 0) return;
 
     // Only allow upload if (not collab) or (collab and userRole is admin/editor)
     if (isCollab && !(userRole === 'admin' || userRole === 'editor')) {
@@ -57,7 +61,7 @@ export default function FileUpload({ note, onUpload, userRole, isCollab }) {
         validateFile(file);
 
         // Upload file
-        await uploadFile(file, note._id, isCollab);
+        await uploadFile(file, note.id, isCollab);
         successCount++;
         setProgress((successCount / totalFiles) * 100);
       } catch (err) {

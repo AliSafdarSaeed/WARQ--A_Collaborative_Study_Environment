@@ -209,31 +209,132 @@ export const getUserGroups = async (userId) => {
   return memberships.map(m => ({ ...m.projects, role: m.role }));
 };
 
+// Search users by name or email
+export const searchUsers = async (query) => {
+  if (!query) return [];
+  
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name, email')
+    .or(`name.ilike.%${query}%,email.ilike.%${query}%`)
+    .limit(5);
+
+  if (error) {
+    console.error('Error searching users:', error);
+    throw error;
+  }
+
+  return data || [];
+};
+
 // Get group members with roles
 export const getGroupMembers = async (groupId) => {
+  try {
+    // First get the members
   const { data: members, error } = await supabase
     .from('project_members')
-    .select(`
-      user_id,
-      role,
-      joined_at,
-      users:user_id (
-        id,
-        email,
-        user_metadata
-      )
-    `)
+      .select('user_id, role, joined_at, status')
     .eq('project_id', groupId)
     .eq('status', 'accepted');
 
+    if (error) {
+      console.error('Error fetching members:', error);
+      throw error;
+    }
+
+    if (!members || members.length === 0) {
+      return [];
+    }
+
+    // Get user details
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('id, name, email')
+      .in('id', members.map(m => m.user_id));
+
+    if (usersError) {
+      console.error('Error fetching users:', usersError);
+      throw usersError;
+    }
+
+    // Create a map of user details
+    const userMap = new Map(users.map(u => [u.id, u]));
+
+    // Combine member and user data
+    return members.map(member => {
+      const user = userMap.get(member.user_id);
+      return {
+        id: member.user_id,
+        role: member.role,
+        joinedAt: member.joined_at,
+        email: user?.email || 'Unknown',
+        name: user?.name || 'Unknown User'
+      };
+    });
+  } catch (error) {
+    console.error('Error in getGroupMembers:', error);
+    throw error;
+  }
+};
+
+// Get all notifications for a user
+export const getUserNotifications = async (userId, filter = 'all') => {
+  try {
+    let query = supabase
+      .from('notifications')
+      .select(`
+        *,
+        projects (
+          id,
+          title
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (filter === 'unread') {
+      query = query.eq('is_read', false);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    throw error;
+  }
+};
+
+// Mark notification as read
+export const markNotificationAsRead = async (notificationId) => {
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', notificationId);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+    throw error;
+  }
+};
+
+// Mark all notifications as read
+export const markAllNotificationsAsRead = async (userId) => {
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', userId)
+      .eq('is_read', false);
+
   if (error) throw error;
-  return members.map(m => ({
-    id: m.user_id,
-    role: m.role,
-    joinedAt: m.joined_at,
-    email: m.users.email,
-    name: m.users.user_metadata?.full_name
-  }));
+  } catch (error) {
+    console.error('Error marking all notifications as read:', error);
+    throw error;
+  }
 };
 
 // Get pending invitations

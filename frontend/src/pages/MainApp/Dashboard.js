@@ -18,344 +18,17 @@ import Modal from '../../components/Modal';
 import FileUpload from '../../components/FileUpload';
 import { Toaster, toast } from 'react-hot-toast';
 import { Bell, Menu, Search, Plus, Bold, Italic, Heading1, Heading2, List, ListOrdered, Palette, Upload, MessageSquare, Bot, X, Edit3, Save, LogOut, Users, UserPlus, FolderPlus, FileText, Check } from 'lucide-react';
-import NotificationCard from '../../components/NotificationCard';
-import { sendNotification } from '../../services/notificationService';
-import WarqLogo from '../../components/WarqLogo';
-import { createClient } from '@supabase/supabase-js';
+import NotificationsBell from '../../components/NotificationsBell';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Avatar } from '../../components/Avatar';
-import { createGroup, inviteToGroup, getUserGroups, getGroupMembers, inviteUserToGroup, acceptGroupInvitation, declineGroupInvitation } from '../../services/groupService';
+import WarqLogo from '../../components/WarqLogo';
+import InviteModal from '../../components/InviteModal';
 import Chat from '../../components/Chat/Chat';
-import { clearAllNotifications } from '../../utils/notificationHelpers';
 import { subscribeToGroupNotes, subscribeToGroupPresence } from '../../services/groupService';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+import { getGroupMembers } from '../../services/groupService';
 
 const sortNotesByDate = (notes) => {
   return [...notes].sort((a, b) => 
     new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
-  );
-};
-
-const InviteModal = ({ isOpen, onClose, onInvite, email, setEmail }) => {
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSearch = async () => {
-    if (!email.trim()) {
-      setError('Please enter a name or email to search');
-      return;
-    }
-
-    setSearching(true);
-    setError('');
-    try {
-      // Search by email
-      const { data: emailMatches, error: emailError } = await supabase
-        .from('users')
-        .select('id, email, name, user_metadata')
-        .ilike('email', `%${email}%`)
-        .limit(5);
-
-      // Search by name
-      const { data: nameMatches, error: nameError } = await supabase
-        .from('users')
-        .select('id, email, name, user_metadata')
-        .ilike('name', `%${email}%`)
-        .limit(5);
-
-      const allResults = [...(emailMatches || [])];
-      
-      // Add name matches that aren't already in email matches
-      if (nameMatches) {
-        nameMatches.forEach(match => {
-          if (!allResults.some(r => r.id === match.id)) {
-            allResults.push(match);
-          }
-        });
-      }
-
-      setSearchResults(allResults);
-      
-      if (allResults.length === 0) {
-        setError('No users found matching that name or email');
-      }
-    } catch (err) {
-      console.error('Search error:', err);
-      setError('Error searching for users');
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleUserSelect = (user) => {
-    setEmail(user.email);
-    setSearchResults([]);
-  };
-
-  useEffect(() => {
-    if (!isOpen) {
-      setSearchResults([]);
-      setError('');
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-  
-  return (
-    <div className="modal-backdrop">
-      <div className="modal-content">
-        <h3>Invite Member</h3>
-        <div className="search-section">
-          <input
-            type="text"
-            placeholder="Search by name or email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-            className="modal-input"
-          />
-          <button 
-            onClick={handleSearch}
-            disabled={searching}
-            className="search-btn"
-          >
-            {searching ? 'Searching...' : 'Search'}
-          </button>
-        </div>
-        
-        {error && <div className="search-error">{error}</div>}
-        
-        {searchResults.length > 0 && (
-          <div className="search-results">
-            {searchResults.map(user => (
-              <div 
-                key={user.id} 
-                className="user-result"
-                onClick={() => handleUserSelect(user)}
-              >
-                <div className="user-avatar">
-                  {user.name ? user.name.charAt(0).toUpperCase() : 
-                    user.email.charAt(0).toUpperCase()}
-                </div>
-                <div className="user-info">
-                  <div className="user-name">
-                    {user.name || user.user_metadata?.full_name || 'User'}
-                  </div>
-                  <div className="user-email">{user.email}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        
-        <div className="modal-actions">
-          <button onClick={onClose} className="modal-button cancel">Cancel</button>
-          <button 
-            onClick={onInvite} 
-            className="modal-button invite"
-            disabled={!email.trim()}
-          >
-            Send Invite
-          </button>
-        </div>
-
-        <style jsx>{`
-          .search-section {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 16px;
-          }
-          .search-btn {
-            padding: 0 16px;
-            background: #47e584;
-            color: #181818;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 500;
-          }
-          .search-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-          }
-          .search-error {
-            color: #ff6b6b;
-            margin-bottom: 16px;
-            font-size: 14px;
-          }
-          .search-results {
-            max-height: 200px;
-            overflow-y: auto;
-            margin-bottom: 16px;
-            border: 1px solid #333;
-            border-radius: 4px;
-          }
-          .user-result {
-            display: flex;
-            align-items: center;
-            padding: 8px 12px;
-            cursor: pointer;
-            transition: background 0.2s;
-          }
-          .user-result:hover {
-            background: rgba(71, 229, 132, 0.1);
-          }
-          .user-avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: rgba(71, 229, 132, 0.2);
-            color: #47e584;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 600;
-            margin-right: 12px;
-            font-size: 16px;
-          }
-          .user-name {
-            font-weight: 500;
-            margin-bottom: 2px;
-          }
-          .user-email {
-            font-size: 12px;
-            color: #aaa;
-          }
-        `}</style>
-      </div>
-    </div>
-  );
-};
-
-// Add this utility function at the top level
-const serializeError = (error) => {
-  if (!error) return 'No error object provided';
-  
-  // Handle non-object errors
-  if (typeof error !== 'object') return String(error);
-
-  // Create a safe copy of the error object
-  const serialized = {
-    name: error.name,
-    message: error.message,
-    code: error.code,
-    details: error.details,
-    hint: error.hint,
-    stack: error.stack,
-    statusCode: error.statusCode,
-    status: error.status
-  };
-
-  // Add any additional properties
-  Object.getOwnPropertyNames(error).forEach(prop => {
-    if (!serialized[prop]) {
-      try {
-        serialized[prop] = JSON.stringify(error[prop]);
-      } catch (e) {
-        serialized[prop] = '[Circular or Non-Serializable]';
-      }
-    }
-  });
-
-  return JSON.stringify(serialized, null, 2);
-};
-
-// Add this component near the top with other modal components
-const CreateGroupModal = ({ isOpen, onClose, onCreate }) => {
-  const [groupName, setGroupName] = useState('');
-  const [description, setDescription] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!groupName.trim()) return;
-
-    setIsLoading(true);
-    try {
-      await onCreate(groupName, description);
-      setGroupName('');
-      setDescription('');
-      onClose();
-    } catch (err) {
-      console.error('Error:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="modal-backdrop">
-      <div className="modal-content create-group-modal">
-        <h3>Create New Group</h3>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="groupName">Group Name</label>
-            <input
-              id="groupName"
-              type="text"
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              placeholder="Enter group name"
-              className="modal-input"
-              maxLength={50}
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="groupDescription">Description (Optional)</label>
-            <textarea
-              id="groupDescription"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Enter group description"
-              className="modal-input"
-              rows={3}
-              maxLength={200}
-            />
-          </div>
-          <div className="modal-actions">
-            <button 
-              type="button" 
-              onClick={onClose} 
-              className="modal-button cancel"
-              disabled={isLoading}
-            >
-              Cancel
-            </button>
-            <button 
-              type="submit" 
-              className="modal-button create"
-              disabled={!groupName.trim() || isLoading}
-            >
-              {isLoading ? 'Creating...' : 'Create Group'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-// Add this component near the top with other component definitions
-const InvitationNotification = ({ notification, onAccept, onDecline }) => {
-  const { group_title, invitation_token } = notification.data || {};
-  
-  return (
-    <div className="invitation-notification">
-      <p>{notification.message}</p>
-      <div className="invitation-actions">
-        <button onClick={() => onAccept(invitation_token)} className="accept-btn">
-          Accept
-        </button>
-        <button onClick={() => onDecline(invitation_token)} className="decline-btn">
-          Decline
-        </button>
-      </div>
-    </div>
   );
 };
 
@@ -492,13 +165,13 @@ function Dashboard() {
         .delete()
         .match({ user_id: user.id, note_id: noteId });
 
-      // Enhanced presence data with more detailed selection info
+      // Only include project_id if in group mode and a group is selected
       const presence = {
         user_id: user.id,
         user_name: user.name || user.user_metadata?.full_name || 'User',
         user_email: user.email,
         note_id: noteId,
-        project_id: isGroupMode ? selectedGroup : null,
+        ...(isGroupMode && selectedGroup ? { project_id: selectedGroup } : {}),
         status,
         cursor_position: editor?.state?.selection ? {
           from: editor.state.selection.from,
@@ -666,21 +339,18 @@ function Dashboard() {
   // Add this near other useMemo hooks
   const filteredNotes = useMemo(() => {
     let filtered = notes;
-    
-    // First filter by mode (personal vs group)
+
+    // Only show group notes in group mode
     if (isGroupMode) {
-      // In group mode, only show notes from the selected group
       filtered = filtered.filter(note => note.project_id === selectedGroup);
-      // If no group is selected, show no notes
       if (!selectedGroup) {
         filtered = [];
       }
     } else {
-      // In personal mode, only show notes without a project_id (personal notes)
+      // In personal mode, strictly show only notes with no project_id
       filtered = filtered.filter(note => !note.project_id);
     }
 
-    // Then apply search filter if exists
     if (notesFilter) {
       const searchTerm = notesFilter.toLowerCase();
       filtered = filtered.filter(note => 
@@ -689,7 +359,6 @@ function Dashboard() {
       );
     }
 
-    // Sort by last updated
     return sortNotesByDate(filtered);
   }, [notes, notesFilter, isGroupMode, selectedGroup]);
 
@@ -1543,27 +1212,39 @@ function Dashboard() {
   };
 
   const handleLogout = async () => {
+    console.log('Sign out button clicked');
     try {
+      // Prompt user to save their work before signing out
+      if (noteTitle?.trim() && noteContent && noteContent !== '<p></p>') {
+        const shouldSave = window.confirm('Do you want to save your current note before signing out?');
+        if (shouldSave) {
+          const saved = await saveCurrentNote();
+          if (saved === false) {
+            toast.error('Failed to save note. Please try again.');
+            return;
+          }
+        } else {
+          // If user cancels, do not sign out
+          return;
+        }
+      }
       // Clear all notifications first
-      clearAllNotifications();
-      
+      if (typeof clearAllNotifications === 'function') clearAllNotifications();
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-
+      if (error) {
+        console.error('Supabase signOut error:', error);
+        toast.error('Failed to sign out. Please try again.');
+        return;
+      }
       // Clear all Supabase session data from localStorage
-      const sessionKey = `sb-${process.env.REACT_APP_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token`;
-      localStorage.removeItem(sessionKey);
       localStorage.removeItem('sb-access-token');
       localStorage.removeItem('sb-refresh-token');
-      
       // Use React Router's navigate for proper routing
       navigate('/login');
-      
-      // Show success message
       toast.success('Successfully signed out');
     } catch (error) {
-      console.error("Logout error:", error);
+      console.error('Logout error:', error);
       toast.error('Failed to sign out. Please try again.');
     }
   };
@@ -1968,13 +1649,13 @@ function Dashboard() {
   useEffect(() => {
     const checkAndNotifyLogin = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session && !welcomeShown) {
+      if (session && !sessionStorage.getItem('welcomeShown')) {
         toast.success('Welcome back!');
-        setWelcomeShown(true);
+        sessionStorage.setItem('welcomeShown', 'true');
       }
     };
     checkAndNotifyLogin();
-  }, [welcomeShown]);
+  }, []);
 
   // Add notification for user logout
   useEffect(() => {
@@ -2013,8 +1694,9 @@ function Dashboard() {
           setGroupsLoading(false);
         }
       } else {
-        // Switching to personal mode
-        await fetchNotes(); // This will only fetch personal notes
+        // Switching to personal mode: reset pagination and fetch personal notes
+        setPage(0);
+        fetchNotes(true, false);
       }
     } catch (error) {
       console.error('Error switching modes:', error);
@@ -2454,312 +2136,18 @@ function Dashboard() {
     }
   };
 
-  // Add this effect to fetch notifications
-  useEffect(() => {
-    const fetchNotifications = async () => {
-      if (!user?.id) return;
-
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_read', false)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching notifications:', error);
-        return;
-      }
-
-      setNotifications(data || []);
-    };
-
-    fetchNotifications();
-
-    // Subscribe to new notifications
-    const channel = supabase
-      .channel('notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user?.id}`
-        },
-        (payload) => {
-          setNotifications(prev => [payload.new, ...prev]);
-          
-          if (payload.new.type === 'group_invitation') {
-            toast.success('You have received a new group invitation!', {
-              duration: 5000,
-              action: {
-                label: 'View',
-                onClick: () => setShowNotificationsModal(true)
-              }
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id]);
-
-  // Add these styles near the other style tags
-  const profileStyles = `
-    .edit-name-form {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      width: 100%;
-    }
-
-    .edit-name-input {
-      flex: 1;
-      padding: 6px 10px;
-      border-radius: 4px;
-      border: 1px solid var(--border-color);
-      background: var(--background-dark);
-      color: var(--text-primary);
-      font-size: 14px;
-    }
-    .save-name-btn {
-      padding: 6px 12px;
-      border-radius: 4px;
-      border: none;
-      background: var(--primary-color);
-      color: var(--background-dark);
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-    }
-
-    .save-name-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .edit-name-btn {
-      background: transparent;
-      border: none;
-      padding: 4px;
-      color: var(--text-secondary);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 4px;
-      transition: all 0.2s ease;
-      min-width: 28px;
-      min-height: 28px;
-    }
-
-    .edit-name-btn:hover {
-      background: var(--background-lighter);
-      color: var(--primary-color);
-    }
-
-    .profile-name {
-      display      align-items: center;
-      gap: 8px;
-      width: 100%;
-    }
-
-    .profile-name-text {
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--text-primary);
-      flex: 1;
-    }
-
-    .profile-header {
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-    }
-
-    .profile-email {
-      font-size: 14px;
-      color: var(--text-secondary);
-      margin-top: 4px;
-    }
-
-    .groups-loading {
-      padding: 16px;
-    }
-
-    .loading-skeleton {
-      background: linear-gradient(
-        90deg,
-        var(--background-dark) 0%,
-        var(--background-lighter) 50%,
-        var(--background-dark) 100%
-      );
-      background-size: 200% 100%;
-      animation: loading 1.5s infinite;
-      border-radius: 8px;
-      height: 80px;
-      margin-bottom: 12px;
-    }
-
-    @keyframes loading {
-      0% {
-        background-position: 200% 0;
-      }
-      100% {
-        background-position: -200% 0;
-      }
-    }
-  `;
-
-  // Add NotificationBell component
-  const NotificationBell = () => {
-    const unreadCount = notifications.filter(n => !n.is_read).length;
-
-    return (
-      <button
-        className="bell-icon"
-        onClick={() => {
-          setShowNotificationsModal(true);
-          markAllNotificationsRead();
-        }}
-        title="Notifications"
-      >
-        <Bell size={20} strokeWidth={2} />
-        {unreadCount > 0 && (
-          <span className="bell-badge">
-            {unreadCount}
-          </span>
-        )}
-      </button>
-    );
-  };
-
-  // Add NotificationItem component
-  const NotificationItem = ({ notification }) => {
-    const getIcon = () => {
-      switch (notification.type) {
-        case 'group_invitation':
-          return <UserPlus size={20} />;
-        case 'group_joined':
-          return <Users size={20} />;
-        case 'note_created':
-          return <FileText size={20} />;
-        default:
-          return <Bell size={20} />;
-      }
-    };
-
-    const getTimeAgo = (date) => {
-      const now = new Date();
-      const notificationDate = new Date(date);
-      const diffInSeconds = Math.floor((now - notificationDate) / 1000);
-      
-      if (diffInSeconds < 60) return 'just now';
-      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-      if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-      return notificationDate.toLocaleDateString();
-    };
-
-    return (
-      <div className={`notification-item${notification.is_read ? ' read' : ''}`}>
-        <div className="notification-icon">
-          {getIcon()}
-        </div>
-        <div className="notification-content">
-          <div className="notification-header">
-            <h4>{notification.title}</h4>
-            <span className="notification-time">
-              {getTimeAgo(notification.created_at)}
-            </span>
-          </div>
-          <p className="notification-message">{notification.message}</p>
-          {notification.type === 'group_invitation' && (
-            <div className="notification-actions">
-              <button
-                className="accept-btn"
-                onClick={() => handleAcceptInvitation(notification.data.invitation_token)}
-              >
-                <Check size={14} />
-                Accept
-              </button>
-              <button
-                className="decline-btn"
-                onClick={() => handleDeclineInvitation(notification.data.invitation_token)}
-              >
-                <X size={14} />
-                Decline
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // Add NotificationsModal component
-  const NotificationsModal = () => {
-    return (
-      <div className="modal-backdrop" onClick={() => setShowNotificationsModal(false)}>
-        <div className="modal-content notifications-modal" onClick={e => e.stopPropagation()}>
-          <div className="notifications-header">
-            <h3>Notifications</h3>
-            <div className="notifications-actions">
-              <button
-                className="mark-all-read-btn"
-                onClick={markAllNotificationsRead}
-                disabled={!notifications.some(n => !n.is_read)}
-              >
-                Mark all as read
-              </button>
-              <button
-                className="close-modal-btn"
-                onClick={() => setShowNotificationsModal(false)}
-              >
-                <X size={20} />
-              </button>
-            </div>
-          </div>
-          <div className="notifications-list">
-            {notifications.length > 0 ? (
-              notifications.map(notification => (
-                <NotificationItem
-                  key={notification.id}
-                  notification={notification}
-                />
-              ))
-            ) : (
-              <div className="no-notifications">
-                <Bell size={24} />
-                <p>No notifications yet</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Render the hidden file input for uploads
-  const renderFileInput = () => (
-    <input
-      ref={fileInputRef}
-      type="file"
-      onChange={handleFileUpload}
-      style={{ display: 'none' }}
-      accept="*/*"
-    />
-  );
-
-  // Enhance renderCollaborators function to show more detailed information
   const renderCollaborators = () => {
     if (!isGroupMode || !selectedGroup || !collaborators || Object.keys(collaborators).length === 0) return null;
-    
+
     const activeUsers = Object.values(collaborators).filter(Boolean);
     if (activeUsers.length === 0) return null;
-    
+
+    const statusColors = {
+      typing: '#47e584', // green for active typing
+      viewing: '#3498DB', // blue for viewing 
+      idle: '#aaa' // gray for idle
+    };
+
     return (
       <div className="collaborators-bar">
         <div className="collaborators-header">
@@ -2770,13 +2158,6 @@ function Dashboard() {
             const initials = collaborator.user_name 
               ? collaborator.user_name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
               : 'U';
-              
-            const statusColors = {
-              typing: '#47e584', // green for active typing
-              viewing: '#3498DB', // blue for viewing 
-              idle: '#aaa' // gray for idle
-            };
-            
             return (
               <div key={collaborator.user_id || idx} className="collaborator-item">
                 <div className="collaborator-avatar" style={{ backgroundColor: `rgba(${Math.floor(Math.random()*255)}, ${Math.floor(Math.random()*255)}, ${Math.floor(Math.random()*255)}, 0.2)` }}>
@@ -2784,16 +2165,18 @@ function Dashboard() {
                   <span 
                     className="status-indicator" 
                     style={{ backgroundColor: statusColors[collaborator.status] || '#aaa' }}
-                    title={`${collaborator.status === 'typing' ? 'Editing' : collaborator.status === 'viewing' ? 'Viewing' : 'Idle'}`}
+                    title={
+                      collaborator.status === 'typing'
+                        ? 'Editing'
+                        : collaborator.status === 'viewing'
+                        ? 'Viewing'
+                        : 'Idle'
+                    }
                   />
                 </div>
                 <div className="collaborator-info">
                   <span className="collaborator-name">
-                    {collaborator.user_name || 'User'}
-                  </span>
-                  <span className="collaborator-status">
-                    {collaborator.status === 'typing' ? 'Editing...' : 
-                     collaborator.status === 'viewing' ? 'Viewing' : 'Idle'}
+                    {collaborator.user_name || 'Unknown User'}
                   </span>
                 </div>
               </div>
@@ -2806,7 +2189,6 @@ function Dashboard() {
 
   return (
     <div className="dashboard-container">
-      <style>{profileStyles}</style>
       <Toaster 
         position="bottom-right"
         toastOptions={{
@@ -2844,6 +2226,15 @@ function Dashboard() {
         }}
       />
       <div className="dashboard-body">
+        {/* Hidden file input for uploads */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          style={{ display: 'none' }}
+          onChange={handleFileUpload}
+          multiple={false}
+          accept="image/*,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        />
         <aside className={`dashboard-sidebar ${isSmallScreen && isSidebarExpanded ? 'expanded' : ''}`}>
           <div className="warq-logo-container">
             {isSmallScreen && (
@@ -3195,9 +2586,8 @@ function Dashboard() {
               </button>
             </div>
             <div className="user-section">
-              <NotificationBell />
+              <NotificationsBell userId={user?.id} />
               <button
-                ref={profileRef}
                 className="profile-button"
                 onClick={() => setShowProfileDropdown(!showProfileDropdown)}
               >
@@ -3215,7 +2605,7 @@ function Dashboard() {
                       onClick={() => setShowProfileDropdown(false)}
                     />
                   )}
-                  <div className="profile-dropdown">
+                  <div ref={profileRef} className="profile-dropdown">
                     <div className="profile-header">
                       <div className="profile-name">
                         {editingName ? (
@@ -3306,7 +2696,10 @@ function Dashboard() {
                     </div>
                     <div className="profile-actions">
                       <button 
-                        onClick={handleLogout}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleLogout();
+                        }}
                         className="profile-action-btn logout-btn"
                       >
                         <LogOut size={16} strokeWidth={2} />
@@ -3370,143 +2763,11 @@ function Dashboard() {
         </main>
       </div>
 
-      {showNotificationsModal && <NotificationsModal />}
-      
-      {/* Add the modal UI */}
-      {showRoleModal && (
-        <Modal onClose={() => setShowRoleModal(false)}>
-          <h2>Manage Roles & Restrictions</h2>
-          <input
-            type="text"
-            placeholder="Search users by name or email..."
-            value={roleModalFilter}
-            onChange={e => setRoleModalFilter(e.target.value)}
-            style={{
-              width: '100%',
-              marginBottom: 12,
-              padding: '6px 10px',
-              borderRadius: 6,
-              border: '1px solid #47e584',
-              background: '#151515',
-              color: '#fff',
-              fontSize: 15
-            }}
-          />
-          {roleModalLoading ? <Spinner /> : (
-            <div>
-              {roleModalError && <div style={{ color: 'red' }}>{roleModalError}</div>}
-              <table style={{ width: '100%', color: '#fff', background: '#222', borderRadius: 8 }}>
-                <thead>
-                  <tr>
-                    <th>User</th>
-                    <th>Role</th>
-                    <th>Restricted Until</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {roleModalUsers
-                    .filter(user => {
-                      const details = roleModalUserDetails[user.userId] || {};
-                      const search = roleModalFilter.toLowerCase();
-                      return (
-                        !roleModalFilter ||
-                        (details.name && details.name.toLowerCase().includes(search)) ||
-                        (details.email && details.email.toLowerCase().includes(search))
-                      );
-                    })
-                    .map(user => (
-                      <tr key={user.userId}>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {/* Avatar: fallback to initials if no avatarUrl */}
-                            {roleModalUserDetails[user.userId]?.avatarUrl ? (
-                              <img src={roleModalUserDetails[user.userId].avatarUrl} alt="avatar" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', border: '2px solid #47e584', marginRight: 6 }} />
-                            ) : (
-                              <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#222', color: '#47e584', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15, marginRight: 6 }}>
-                                {roleModalUserDetails[user.userId]?.name ? roleModalUserDetails[user.userId].name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : '?'}
-                              </div>
-                            )}
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={{ fontWeight: 500 }}>{roleModalUserDetails[user.userId]?.name || user.userId}</span>
-                              <span style={{ color: '#aaa', fontSize: 12 }}>{roleModalUserDetails[user.userId]?.email || ''}</span>
-                              <span style={{
-                                display: 'inline-block',
-                                background: roleColors[user.role] || '#aaa',
-                                color: '#181818',
-                                borderRadius: 6,
-                                fontSize: 11,
-                                fontWeight: 600,
-                                padding: '1px 7px',
-                                marginTop: 2,
-                                letterSpacing: 0.5
-                              }}>{user.role.charAt(0).toUpperCase() + user.role.slice(1)}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <select
-                            value={user.role}
-                            onChange={e => handleRoleChange(user.userId, e.target.value, user.restrictedUntil)}
-                            style={{ background: '#151515', color: '#fff', border: '1px solid #47e584', borderRadius: 4 }}
-                          >
-                            <option value="admin">Admin</option>
-                            <option value="editor">Editor</option>
-                            <option value="commenter">Commenter</option>
-                            <option value="viewer">Viewer</option>
-                            <option value="restricted">Restricted</option>
-                          </select>
-                        </td>
-                        <td>
-                          <input
-                            type="datetime-local"
-                            value={user.restrictedUntil ? new Date(user.restrictedUntil).toISOString().slice(0, 16) : ''}
-                            onChange={e => handleRoleChange(user.userId, user.role, e.target.value)}
-                            style={{ background: '#151515', color: '#fff', border: '1px solid #47e584', borderRadius: 4 }}
-                          />
-                        </td>
-                        <td>
-                          <button
-                            style={{ background: '#ff6b6b', color: '#fff', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: 13 }}
-                            onClick={() => handleRemoveUser(user.userId)}
-                            disabled={roleModalLoading}
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  {/* Edge case: if no users match filter, show message */}
-                  {roleModalUsers.filter(user => {
-                    const details = roleModalUserDetails[user.userId] || {};
-                    const search = roleModalFilter.toLowerCase();
-                    return (
-                      !roleModalFilter ||
-                      (details.name && details.name.toLowerCase().includes(search)) ||
-                      (details.email && details.email.toLowerCase().includes(search))
-                    );
-                  }).length === 0 && (
-                    <tr><td colSpan="4" style={{ color: '#aaa', textAlign: 'center', padding: 16 }}>No users found.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Modal>
-      )}
-      {/* Add the invite modal */}
       <InviteModal
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
         onInvite={inviteMember}
-        email={inviteEmail}
-        setEmail={setInviteEmail}
-      />
-      {renderFileInput()}
-      <CreateGroupModal
-        isOpen={showCreateGroupModal}
-        onClose={() => setShowCreateGroupModal(false)}
-        onCreate={createNewGroup}
+        groupName={groups.find(g => g.id === selectedGroup)?.title || 'Group'}
       />
 
       {/* Add the Chat component */}
@@ -3518,39 +2779,6 @@ function Dashboard() {
           showChat={showChat}
           onClose={() => setShowChat(false)}
         />
-      )}
-
-      {/* Add this before the closing div */}
-      {showNotificationsModal && (
-        <div className="modal-backdrop">
-          <div className="modal-content notifications-modal">
-            <h3>Notifications</h3>
-            <div className="notifications-list">
-              {notifications.map(notification => (
-                <div key={notification.id} className="notification-item">
-                  {notification.type === 'group_invitation' ? (
-                    <InvitationNotification
-                      notification={notification}
-                      onAccept={handleAcceptInvitation}
-                      onDecline={handleDeclineInvitation}
-                    />
-                  ) : (
-                    <p>{notification.message}</p>
-                  )}
-                </div>
-              ))}
-              {notifications.length === 0 && (
-                <p className="no-notifications">No new notifications</p>
-              )}
-            </div>
-            <button 
-              onClick={() => setShowNotificationsModal(false)}
-              className="close-button"
-            >
-              Close
-            </button>
-          </div>
-        </div>
       )}
     </div>
   );

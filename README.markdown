@@ -1,76 +1,67 @@
-# Student Collaborative Study Platform
+# WARQ: Collaborative Study Environment
 
-A full-stack web application designed to empower students to collaborate on study projects, share notes in real-time, generate AI-powered flashcards and quizzes, and communicate via integrated tools. The platform combines a modern tech stack with real-time features and AI integration to enhance the collaborative learning experience.
+A full-stack web application designed to empower students to collaborate on study projects, share notes in real-time, generate AI-powered quizzes, chat, and manage group work. WARQ leverages a modern tech stack with real-time features and group management to enhance the collaborative learning experience.
 
 ---
 
 ## 🚀 Features
 
-- **Study Projects**: Create and join study groups for collaborative learning.
-- **Real-time Collaboration**: Share and annotate notes/documents instantly.
-- **AI-Powered Tools**:
-  - Summarize notes using OpenAI integration.
-  - Generate flashcards and quizzes for efficient studying.
-- **Communication**: Real-time chatroom for group discussions (planned).
-- **Progress Tracking**: Dashboard to monitor project and study progress.
-- **Authentication**: Secure user authentication with Firebase Auth.
-- **File Upload**: Upload and annotate study materials.
+- **Study Groups**: Create and join study groups for collaborative learning.
+- **Real-time Notes**: Create, edit, and share notes in real time (personal and group notes).
+- **Group Invitations**: Invite users to groups, accept/decline invitations, and manage group membership with notifications.
+- **Notifications**: Real-time notifications for invitations, file uploads, role changes, quiz assignments, and more.
+- **AI-Powered Quizzes**: Generate quizzes from your notes to self-assess and reinforce learning.
+- **File Upload**: Upload and manage files for each note (PDFs, images, docs, etc.).
+- **Real-time Chat**: Group chat for each study group, with live updates and member presence.
+- **Progress Tracking**: Dashboard to monitor your notes, group activity, and study progress.
+- **Authentication**: Secure user authentication with Supabase Auth.
+- **User Roles**: Admin, editor, viewer, and more for group management.
+- **Responsive UI**: Modern, clean, and mobile-friendly interface.
 
 ---
 
 ## 🛠️ Tech Stack
 
 **Frontend**:
-- React.js (Next.js for enhanced routing and SSR)
-- Axios (API calls)
-- HTML/CSS
-- Tailwind CSS (styling)
-- Geist font (via Next.js font optimization)
+- React.js (with custom hooks and context)
+- Supabase JS Client (for auth, database, and real-time)
+- HTML/CSS (custom, no Tailwind)
+- Lucide React Icons
+- react-hot-toast (notifications)
 
-**Backend**:
-- Node.js
-- Express.js
-- MongoDB (data storage)
-- Firebase Admin SDK (authentication and real-time features)
+**Backend/Database**:
+- Supabase (PostgreSQL, Auth, Storage, Realtime)
+- Supabase Storage (file uploads)
 
 **AI Integration**:
-- OpenAI API (note summarization, flashcard/quiz generation)
+- (Planned) OpenAI API for note summarization and quiz generation
 
 **Real-time Features**:
-- Firebase Auth
-- Firebase Cloud Messaging (planned for notifications)
+- Supabase Realtime (notes, chat, invitations, notifications)
 
 **Deployment**:
 - Frontend: Vercel/Netlify
-- Backend: Render/Heroku
+- Backend: Supabase Cloud
 
 ---
 
 ## 📁 Project Structure
 
 ```
-student-collab-platform/
-├── backend/                    # Express server & API
-│   ├── controllers/            # API logic
-│   ├── models/                 # MongoDB schemas (e.g., User, Note)
-│   ├── routes/                 # API endpoints
-│   ├── firebase/               # Firebase configuration
-│   ├── config/                 # Database and environment setup
-│   ├── middleware/             # Authentication and error handling
-│   ├── .env                    # Environment variables
-│   ├── server.js               # Main server file
-│   └── package.json            # Backend dependencies
-├── frontend/                   # Next.js/React app
-│   ├── app/                    # Next.js pages and routing
-│   ├── public/                 # Static assets
-│   ├── src/                    # React source code
-│   │   ├── components/         # Reusable UI components
-│   │   ├── pages/              # Page components
-│   │   ├── services/           # Axios API wrapper
-│   │   └── App.js              # Main React app
-│   ├── .env                    # Frontend environment variables
-│   └── package.json            # Frontend dependencies
-├── README.md                   # Project documentation
+WARQ--A_Collaborative_Study_Environment/
+├── frontend/
+│   ├── public/                # Static assets
+│   ├── src/
+│   │   ├── assets/           # Images and icons
+│   │   ├── components/       # Reusable UI components (Chat, Modal, Notification, etc.)
+│   │   ├── hooks/            # Custom React hooks (e.g., useGroupInvitations)
+│   │   ├── pages/            # Page components (Dashboard, Login, Signup, etc.)
+│   │   ├── services/         # Supabase API wrappers (groupService, notificationService, etc.)
+│   │   ├── utils/            # Utility functions
+│   │   └── App.js            # Main React app
+│   ├── package.json          # Frontend dependencies
+│   └── ...
+├── README.markdown           # Project documentation
 ```
 
 ---
@@ -80,42 +71,17 @@ student-collab-platform/
 ### 📦 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/student-collab-platform.git
-cd student-collab-platform
+git clone https://github.com/your-username/warq-collab-study.git
+cd WARQ--A_Collaborative_Study_Environment
 ```
 
 ---
 
-### 🔧 2. Backend Setup
-
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create a `.env` file in the `backend/` directory:
-   ```env
-   PORT=5000
-   MONGO_URI=your_mongodb_uri
-   FIREBASE_PROJECT_ID=your_firebase_project_id
-   ```
-4. Add your Firebase Admin SDK JSON file (`firebaseServiceKey.json`) to `backend/firebase/`. Ensure this file is not committed to the public repository.
-5. Start the backend server:
-   ```bash
-   npm start
-   ```
-   The backend will run at `http://localhost:5000`.
-
----
-
-### 🎨 3. Frontend Setup
+### 🔧 2. Frontend Setup
 
 1. Navigate to the frontend directory:
    ```bash
-   cd ../frontend
+   cd frontend
    ```
 2. Install dependencies:
    ```bash
@@ -123,29 +89,20 @@ cd student-collab-platform
    ```
 3. Create a `.env` file in the `frontend/` directory:
    ```env
-   REACT_APP_API_URL=http://localhost:5000
+   REACT_APP_SUPABASE_URL=your_supabase_url
+   REACT_APP_SUPABASE_ANON_KEY=your_supabase_anon_key
    ```
 4. Start the frontend development server:
    ```bash
-   npm run dev
+   npm start
    ```
    The frontend will run at `http://localhost:3000`.
 
 ---
 
-## 🔗 Connecting Frontend to Backend
+## 🔗 Connecting to Supabase
 
-The frontend uses Axios to communicate with the backend. Configure the API wrapper in `frontend/src/services/api.js`:
-
-```javascript
-import axios from 'axios';
-
-const API = axios.create({
-  baseURL: process.env.REACT_APP_API_URL + '/api'
-});
-
-export default API;
-```
+The frontend uses the Supabase JS client for all authentication, database, and real-time features. Configure your Supabase project URL and anon key in the `.env` file as shown above.
 
 ---
 
@@ -153,49 +110,46 @@ export default API;
 
 | Member             | Role                                |
 |--------------------|-------------------------------------|
-| Saqib Mahmood      | Backend Dev, React Integration, AI  |
-| Ali Safdar Saeed   | Frontend Dev (HTML/CSS/React, Chat Feature)       |
-| Qura tul Ain       | Firebase Auth & Firestore           |
+| Saqib Mahmood      | Backend, Supabase Integration, AI   |
+| Ali Safdar Saeed   | Frontend, UI/UX, Chat, Group Logic  |
+| Qurat-ul-Ain       | Auth, Group Features, Testing       |
 
 ---
 
 ## 📋 Features Status
 
-- [x] Create and join study projects
-- [ ] AI-powered note summarization
-- [ ] Flashcard and quiz generator
-- [ ] Firebase Auth integration
-- [ ] Real-time chatroom
-- [ ] Upload and annotate notes/documents
-- [ ] Progress tracking dashboard
+- [x] Create and join study groups
+- [x] Real-time collaborative notes (personal & group)
+- [x] Group invitations with notifications
+- [x] Accept/decline invitations and update group membership
+- [x] Real-time notifications (all major events)
+- [x] File upload and management
+- [x] Real-time group chat
+- [x] Progress dashboard
+- [x] User roles and permissions
+- [x] Responsive, modern UI
+- [ ] AI-powered note summarization (planned)
+- [ ] AI-powered quiz generator (planned)
 
 ---
 
 ## 📦 Required Dependencies
 
-### Backend
-```bash
-npm install express mongoose dotenv cors firebase-admin
-npm install --save-dev nodemon
-```
-
 ### Frontend
 ```bash
-npm install axios next react react-dom tailwindcss
+npm install react supabase @tiptap/react @tiptap/starter-kit lucide-react react-hot-toast
 ```
 
 ---
 
 ## 🚀 Deployment
 
-- **Frontend**: Deploy to Vercel or Netlify for Next.js hosting.
-- **Backend**: Deploy to Render or Heroku for Node.js hosting.
+- **Frontend**: Deploy to Vercel or Netlify for React hosting.
+- **Backend**: Use Supabase Cloud for database, auth, and storage.
 - Ensure environment variables are configured on the hosting platform.
-
-For Next.js deployment on Vercel, follow the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying).
 
 ---
 
 ## 📄 License
 
-MIT © 2025 Student Collaborative Study Platform Team
+MIT © 2025 WARQ Collaborative Study Environment Team

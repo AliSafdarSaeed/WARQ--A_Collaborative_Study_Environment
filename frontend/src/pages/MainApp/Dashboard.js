@@ -2301,9 +2301,23 @@ function Dashboard() {
                     <div
                       key={group.id}
                       className={`group-item${selectedGroup === group.id ? ' active' : ''}`}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
                       onClick={() => handleGroupSelect(group.id)}
                     >
                       <span>{group.title}</span>
+                      <button
+                        className="group-invite-btn"
+                        title="Invite users to this group"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setSelectedGroup(group.id);
+                          setShowInviteModal(true);
+                        }}
+
+                        style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }} 
+                      >
+                        <UserPlus size={16} />
+                      </button>
                     </div>
                   ))
                 ) : (
@@ -2332,6 +2346,24 @@ function Dashboard() {
                   </button>
                 )}
               </div>
+              
+              {/* Add search input for notes */}
+              <div className="search-container">
+                <Search size={14} className="search-icon" />
+                <input
+                  type="text"
+                  className="notes-search-input"
+                  placeholder="Search notes..."
+                  value={notesFilter}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  disabled={isSearching}
+                />
+                {isSearching && (
+                  <div className="search-spinner">
+                    <Spinner size={14} />
+                  </div>
+                )}
+              </div>
             </div>
             <div className="notes-scroll-wrapper">
               <div className="notes-list">
@@ -2340,13 +2372,61 @@ function Dashboard() {
                     <div
                       key={note.id}
                       className={`note-item${activeNote?.id === note.id ? ' active' : ''}`}
-                      onClick={() => handleEdit(note)}
                     >
-                      <span>{note.title || 'Untitled'}</span>
+                      <div 
+                        className="note-content"
+                        onClick={() => handleEdit(note)}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
+                      >
+                        <span>{note.title || 'Untitled'}</span>
+                        <button
+                          className="note-delete-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(note.id);
+                          }}
+                          title="Delete note"
+                          style={{ 
+                            background: 'none', 
+                            border: 'none', 
+                            cursor: 'pointer', 
+                            opacity: 0.6,
+                            padding: '4px',
+                            borderRadius: '4px',
+                            color: 'var(--danger-color)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18"></path>
+                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   ))
                 ) : (
                   <div className="empty-state">No notes found.</div>
+                )}
+                
+                {hasMore && !isGroupMode && (
+                  <button 
+                    className="load-more-btn"
+                    onClick={handleLoadMore}
+                    disabled={notesLoading}
+                  >
+                    {notesLoading ? (
+                      <>
+                        <div className="loading-spinner"></div>
+                        Loading...
+                      </>
+                    ) : (
+                      'Load More Notes'
+                    )}
+                  </button>
                 )}
               </div>
             </div>

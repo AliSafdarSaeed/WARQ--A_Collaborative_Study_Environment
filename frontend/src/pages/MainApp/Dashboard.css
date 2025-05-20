@@ -217,13 +217,15 @@
 }
 
 .search-container:focus-within {
-  border-color: var(--primary-color);
+  position: relative;
+  display: flex;
+  align-items: center;
   box-shadow: 0 0 0 2px rgba(71, 229, 132, 0.1);
 }
 
 .search-icon {
   color: var(--text-secondary);
-  margin-right: 8px;
+  margin-right: 12px;
 }
 
 .notes-search-input {
@@ -239,6 +241,7 @@
 .notes-search-input::placeholder {
   color: var(--text-secondary);
   opacity: 0.7;
+  
 }
 
 .notes-search-input:disabled {
@@ -379,7 +382,18 @@
   color: var(--text-secondary);
   opacity: 0.7;
 }
-
+.note-title-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.7;
+  box-shadow: none; /* Add this line */
+}
+.note-title-input:focus,
+.note-title-input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  background: transparent;
+}
 .save-note-btn {
   padding: 8px 20px;
   background: var(--primary-color);
@@ -473,6 +487,19 @@
   padding: 24px;
 }
 
+.rich-text-editor {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent; /* if needed */
+}
+
+.rich-text-editor * {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent;
+}
 .ProseMirror {
   width: 100%;
   max-width: none;

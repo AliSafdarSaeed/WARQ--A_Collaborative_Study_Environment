@@ -126,65 +126,68 @@ export const inviteUserToGroup = async (groupId, userId, inviterId) => {
 // Accept a group invitation
 export const acceptGroupInvitation = async (invitationToken, userId) => {
   // Get invitation with group details
-  const { data: invitation, error: inviteError } = await supabase
-    .from('projects_invitations')
-    .select(`
-      project_id,
-      status,
-      projects (
-        title
-      )
-    `)
-    .eq('invitation_token', invitationToken)
-    .eq('invited_user_id', userId)
-    .eq('status', 'pending')
-    .maybeSingle();
+  // Add at line 125 (right after creating success notification for the accepter)
 
-  if (inviteError || !invitation) {
-    throw inviteError || new Error('Invalid or expired invitation');
-  }
+// Get invitation details with invited_by
+    const { data: invitation, error: inviteError } = await supabase
+  .from('projects_invitations')
+  .select(`
+    project_id,
+    status,
+    invited_by, // Make sure to grab the inviter's ID
+    projects (
+      title
+    )
+  `)
+  .eq('invitation_token', invitationToken)
+  .eq('invited_user_id', userId)
+  .eq('status', 'pending')
+  .maybeSingle();
 
-  // Start a transaction
-  try {
-  // Add to project_members
-  const { error: memberError } = await supabase
-    .from('project_members')
-    .insert({
-      user_id: userId,
-      project_id: invitation.project_id,
-      status: 'accepted',
-        role: 'member',
-      joined_at: new Date().toISOString()
-    });
-  if (memberError) throw memberError;
+// ...existing code...
 
-  // Mark invitation as accepted
-    const { error: updateError } = await supabase
-    .from('projects_invitations')
-    .update({ status: 'accepted' })
-    .eq('invitation_token', invitationToken);
-    if (updateError) throw updateError;
+const { error: notifyError } = await supabase
+  .from('notifications')
+  .insert([{
+    user_id: userId,
+    type: 'group_joined',
+    title: 'Group Joined',
+    message: `You have successfully joined ${invitation.projects.title}`,
+    data: { group_id: invitation.project_id },
+    is_read: false,
+    created_at: new Date().toISOString()
+  }]);
+if (notifyError) throw notifyError;
 
-    // Create success notification
-    const { error: notifyError } = await supabase
-      .from('notifications')
-      .insert([{
-        user_id: userId,
-        type: 'group_joined',
-        title: 'Group Joined',
-        message: `You have successfully joined ${invitation.projects.title}`,
-        data: { group_id: invitation.project_id },
-        is_read: false,
-        created_at: new Date().toISOString()
-      }]);
-    if (notifyError) throw notifyError;
+// ADD THIS CODE HERE ↓↓↓ (around line 125-127)
+// Create notification for the inviter
+const { data: userInfo } = await supabase
+.from('users')
+.select('email, user_metadata')
+.eq('id', userId)
+.single();
 
-  return { groupId: invitation.project_id };
-  } catch (error) {
-    console.error('Error accepting invitation:', error);
-    throw error;
-  }
+const { error: inviterNotifyError } = await supabase
+.from('notifications')
+.insert([{
+  user_id: invitation.invited_by,
+  type: 'invitation_accepted',
+  title: 'Invitation Accepted',
+  message: `${userInfo?.user_metadata?.name || userInfo?.email || 'Someone'} accepted your invitation to join ${invitation.projects.title}`,
+  data: { 
+    group_id: invitation.project_id,
+    user_id: userId 
+  },
+  is_read: false,
+  created_at: new Date().toISOString()
+}]);
+if (inviterNotifyError) console.error('Error notifying inviter:', inviterNotifyError);
+// END OF NEW CODE ↑↑↑
+
+return { groupId: invitation.project_id };
 };
+
+
 
 // Get user's groups with real-time subscription
 export const getUserGroups = async (userId) => {
@@ -360,7 +363,7 @@ export const getPendingInvitations = async (userId) => {
   return invitations.map(inv => ({
     ...inv,
     group_title: inv.projects.title,
-    inviter_name: inv.inviter.user_metadata?.full_name || inv.inviter.email
+    inviter_name: inv.inviter.user_metadata?.name || inv.inviter.email
   }));
 };
 
@@ -392,7 +395,7 @@ export const subscribeToInvitations = (userId, callback) => {
             .single();
 
           payload.new.group_title = details?.title;
-          payload.new.inviter_name = inviter?.user_metadata?.full_name || inviter?.email;
+          payload.new.inviter_name = inviter?.user_metadata?.name || inviter?.email;
         }
         callback(payload);
       }

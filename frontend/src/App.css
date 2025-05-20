@@ -50,11 +50,11 @@
 }
 .hero-wrapper {
   text-align: left;
-  padding: 170px 100px 20px 100px;
+  padding: 220px 100px 20px 100px;
 }
 .warq-logo-container {
   color: black;
-  background-color: #47e584;
+  background-color: #47e584 !important;
   font-family: 'Anton', sans-serif;
 
   padding: 0.2rem 0.5rem;      /* Adjusted padding */
@@ -64,8 +64,14 @@
   position: relative;
   z-index: 2;
   line-height: 1;             /*important */
-  vertical-align: baseline;  /*align with text*/
+  
+  width:auto;
+  max-width: max-content;
+  height: auto;
+  max-height: max-content;
+  box-sizing: border-box;
 }
+
 .hero-text {
   font-size: 100px;
   margin: 0;

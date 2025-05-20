@@ -180,7 +180,7 @@ const FileCard = ({ file, noteId, onDelete, userRole, isCollab, compact }) => {
       )}
       </div>
 
-      <style jsx>{`
+      <style>{`
         .file-card {
           display: flex;
           align-items: center;

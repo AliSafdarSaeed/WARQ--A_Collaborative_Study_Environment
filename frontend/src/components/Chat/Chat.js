@@ -20,12 +20,15 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
 
   // Scroll to bottom of messages
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Load initial messages
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (showChat && projectId && userId) {
+      loadMessages();
+    }
+  }, [projectId, showChat, userId]);
 
   // Load initial messages and set up subscription
   useEffect(() => {
@@ -57,7 +60,7 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
     try {
       setLoading(true);
       setHasMore(true);
-      
+
       // First, verify project membership
       const { data: membership, error: membershipError } = await supabase
         .from('project_members')
@@ -79,7 +82,7 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
 
       if (membersError) throw membersError;
 
-      const memberIds = acceptedMembers.map(member => member.user_id);
+      const memberIds = acceptedMembers.map((member) => member.user_id);
 
       // Now load messages with user data for accepted members only
       const { data: messages, error: messagesError } = await supabase
@@ -102,9 +105,9 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
       if (messagesError) throw messagesError;
 
       // Transform messages to include user names
-      const transformedMessages = (messages || []).map(message => ({
+      const transformedMessages = (messages || []).map((message) => ({
         ...message,
-        userName: message.users?.name || 'Unknown User'
+        userName: message.users?.name || 'Unknown User',
       })).reverse();
 
       setMessages(transformedMessages);
@@ -131,7 +134,7 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
         event: 'INSERT',
         schema: 'public',
         table: 'project_chats',
-        filter: `project_id=eq.${projectId}`
+        filter: `project_id=eq.${projectId}`,
       }, async (payload) => {
         try {
           // Verify the message is from an accepted member
@@ -166,10 +169,10 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
 
           const transformedMessage = {
             ...message,
-            userName: message.users?.name || 'Unknown User'
+            userName: message.users?.name || 'Unknown User',
           };
 
-          setMessages(current => [...current, transformedMessage]);
+          setMessages((current) => [...current, transformedMessage]);
           scrollToBottom();
         } catch (error) {
           console.error('Error handling new message:', error);
@@ -192,7 +195,7 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
         .insert({
           content: newMessage.trim(),
           user_id: userId,
-          project_id: projectId
+          project_id: projectId,
         });
 
       if (error) throw error;
@@ -230,7 +233,7 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
 
       if (membersError) throw membersError;
 
-      const memberIds = acceptedMembers.map(member => member.user_id);
+      const memberIds = acceptedMembers.map((member) => member.user_id);
 
       // Load older messages
       const { data: messages, error: messagesError } = await supabase
@@ -253,12 +256,12 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
 
       if (messagesError) throw messagesError;
 
-      const transformedMessages = (messages || []).map(message => ({
+      const transformedMessages = (messages || []).map((message) => ({
         ...message,
-        userName: message.users?.name || 'Unknown User'
+        userName: message.users?.name || 'Unknown User',
       })).reverse();
 
-      setMessages(current => [...transformedMessages, ...current]);
+      setMessages((current) => [...transformedMessages, ...current]);
       if (!messages || messages.length < PAGE_SIZE) setHasMore(false);
       if (transformedMessages.length > 0) {
         oldestMessageRef.current = transformedMessages[0].created_at;
@@ -274,7 +277,7 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
   const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString('en-US', {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
@@ -303,18 +306,14 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
                 <div
                   key={message.id}
                   className={`message ${message.user_id === userId ? 'sent' : 'received'}`}
-                  data-user-id={message.user_id === userId ? 'sent' : (parseInt(message.user_id.charAt(message.user_id.length - 1)) % 5 + 1)}
+                  data-user-id={message.user_id === userId ? 'sent' : parseInt(message.user_id.charAt(message.user_id.length - 1)) % 5 + 1}
                 >
                   {message.user_id !== userId && (
-                    <div className="message-sender">
-                      {message.userName}
-                    </div>
+                    <div className="message-sender">{message.userName}</div>
                   )}
                   <div className="message-content">
                     <p>{message.content}</p>
-                    <span className="message-time">
-                      {formatTime(message.created_at)}
-                    </span>
+                    <span className="message-time">{formatTime(message.created_at)}</span>
                   </div>
                 </div>
               ))}
@@ -332,8 +331,8 @@ const Chat = ({ projectId, userId, userName, showChat, onClose }) => {
             className="message-input"
             disabled={sendingMessage}
           />
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="send-button"
             disabled={!newMessage.trim() || sendingMessage}
           >

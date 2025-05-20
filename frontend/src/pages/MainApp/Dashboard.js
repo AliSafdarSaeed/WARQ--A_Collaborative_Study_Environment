@@ -17,7 +17,7 @@ import FileCard from "../../components/FileCard";
 import Modal from '../../components/Modal';
 import FileUpload from '../../components/FileUpload';
 import { Toaster, toast } from 'react-hot-toast';
-import { Bell, Menu, Search, Plus, Bold, Italic, Heading1, Heading2, List, ListOrdered, Palette, Upload, MessageSquare, Bot, X, Edit3, Save, LogOut, Users, UserPlus, FolderPlus, FileText, Check } from 'lucide-react';
+import { Bell, Menu, Search, Plus, Bold, Italic, Heading1, Heading2, List, ListOrdered, Palette, Upload, MessageSquare, Bot, X, Edit3, Save, LogOut, Users, UserPlus, FolderPlus, FileText, Check, AppWindow } from 'lucide-react';
 import NotificationsBell from '../../components/NotificationsBell';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import WarqLogo from '../../components/WarqLogo';
@@ -25,6 +25,7 @@ import InviteModal from '../../components/InviteModal';
 import Chat from '../../components/Chat/Chat';
 import { subscribeToGroupNotes, subscribeToGroupPresence, createGroup, getGroupMembers } from '../../services/groupService';
 import { acceptGroupInvitation } from '../../services/groupService';
+import { v4 as uuidv4 } from 'uuid';
 
 const sortNotesByDate = (notes) => {
   return [...notes].sort((a, b) => 
@@ -1870,108 +1871,47 @@ function Dashboard() {
   // Around line 1947
   const inviteMember = async (selectedUser) => {
     if (!selectedUser || !selectedUser.id) {
-      toast.error('Please enter a valid email address or name');
+      toast.error('Please select a valid user to invite');
       return;
     }
-
+  
     try {
-      const loadingToast = toast.loading('Searching for user...');
-      
-      // First try to find the user by exact email match
-      let userToInvite;
-      const { data: userByEmail, error: emailError } = await supabase
-        .from('users')
-        .select('id, email, name, user_metadata')
-        .eq('email', inviteEmail)
-        .single();
-      
-      if (userByEmail) {
-        userToInvite = userByEmail;
-      } else {
-        // If no exact email match, try searching by name
-        const { data: usersByName, error: nameError } = await supabase
-          .from('users')
-          .select('id, email, name, user_metadata')
-          .ilike('name', `%${inviteEmail}%`)
-          .limit(1);
-        
-        if (usersByName && usersByName.length > 0) {
-          userToInvite = usersByName[0];
-        }
-      }
-
-      if (!userToInvite) {
-        toast.dismiss(loadingToast);
-        toast.error('User not found in WARQ. Only existing users can be invited.');
-        return;
-      }
-
-      toast.dismiss(loadingToast);
-      toast.loading(`Found user: ${userToInvite.name || userToInvite.email}. Sending invitation...`);
-
       // Check if user is already a member
-      const { data: existingMember, error: memberError } = await supabase
+      const { data: existingMember } = await supabase
         .from('project_members')
         .select('id')
         .eq('project_id', selectedGroup)
-        .eq('user_id', userToInvite.id)
+        .eq('user_id', selectedUser.id)
         .eq('status', 'accepted')
         .single();
-
+  
       if (existingMember) {
-        toast.dismiss();
         toast.error('User is already a member of this group');
         return;
       }
+      const invitationToken = uuidv4();
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-      // Get group details
-      const { data: group, error: groupError } = await supabase
-        .from('projects')
-        .select('title')
-        .eq('id', selectedGroup)
-        .single();
-
-      if (groupError) throw groupError;
-
-      const { invitation, reused } = await inviteUserToGroup(selectedGroup, userToInvite.id, user.id);
-      
-      toast.dismiss();
-      if (reused) {
-        toast.success('Invitation already sent to this user');
-      } else {
-        toast.success('Invitation sent successfully!');
-      }
-      
+      // Send invitation (replace with your actual invitation logic)
+      const { error: inviteError } = await supabase
+        .from('projects_invitations')
+        .insert([{
+          project_id: selectedGroup,
+          invited_user_id: selectedUser.id,
+          invited_email: selectedUser.email,
+          invited_by: user.id,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          invitation_token: invitationToken,
+          expires_at: expiresAt
+        }]);
+  
+      if (inviteError) throw inviteError;
+  
+      toast.success('Invitation sent successfully!');
       setShowInviteModal(false);
       setInviteEmail('');
-
-      // Send notification about the invitation
-      if (!reused && user) {
-        try {
-          await supabase.from('notifications').insert([{
-            user_id: user.id,
-            type: 'group_invitation_sent',
-            title: 'Invitation Sent',
-            message: `You invited ${userToInvite.user_metadata?.full_name || userToInvite.name || userToInvite.email} to join "${group.title}"`,
-            data: {
-              groupId: selectedGroup,
-              groupTitle: group.title,
-              invitedUser: {
-                id: userToInvite.id,
-                email: userToInvite.email,
-                name: userToInvite.user_metadata?.full_name || userToInvite.name
-              }
-            },
-            is_read: false,
-            created_at: new Date().toISOString()
-          }]);
-        } catch (notifyError) {
-          console.error('Error sending notification:', notifyError);
-        }
-      }
     } catch (err) {
-      console.error('Error inviting member:', err);
-      toast.dismiss();
       toast.error(err.message || 'Failed to send invitation');
     }
   };
@@ -2113,7 +2053,11 @@ function Dashboard() {
   // Add this before the closing div
   const handleChatToggle = () => {
     if (isGroupMode && selectedGroup) {
-      setShowChat(!showChat);
+      console.log("Chat toggle clicked, current state:", showChat);
+      setShowChat(prevState => !prevState);
+      console.log("Chat should be set to:", !showChat);
+    } else {
+      toast.error("Chat is only available in group mode with a selected group");
     }
   };
 
@@ -2307,7 +2251,7 @@ function Dashboard() {
           multiple={false}
           accept="image/*,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         />
-        <aside className={`dashboard-sidebar ${isSmallScreen && isSidebarExpanded ? 'expanded' : ''}`}>
+        <aside className={`dashboard-sidebar ${isSmallScreen && isSidebarExpanded ? 'expanded' : ''}`} style={{ position: 'relative', minWidth: 260 }}>
           <div className="warq-logo-container">
             {isSmallScreen && (
               <button
@@ -2320,7 +2264,7 @@ function Dashboard() {
             )}
             <WarqLogo size={isSmallScreen ? 'small' : 'medium'} variant="default" />
           </div>
-          
+
           <div className="mode-switch-container">
             <div className="mode-label">
               <Users size={16} />
@@ -2334,6 +2278,7 @@ function Dashboard() {
             />
           </div>
 
+          {/* GROUPS SECTION */}
           {isGroupMode && (
             <div className="groups-section">
               <div className="groups-header">
@@ -2350,339 +2295,117 @@ function Dashboard() {
                   New Group
                 </button>
               </div>
-              
-              {groupsLoading ? (
-                <div className="groups-loading">
-                  {Array(3).fill(0).map((_, i) => (
-                    <div key={i} className="group-item loading-skeleton" />
-                  ))}
-                </div>
-              ) : (
-                <div className="groups-list">
-                  {groups.filter(group => group && group.id).map(group => (
+              <div className="groups-list">
+                {groups && groups.length > 0 ? (
+                  groups.map(group => (
                     <div
                       key={group.id}
                       className={`group-item${selectedGroup === group.id ? ' active' : ''}`}
                       onClick={() => handleGroupSelect(group.id)}
                     >
-                      <div className="group-info">
-                        <h4>{group.title}</h4>
-                        {group.description && (
-                          <p className="group-description">{group.description}</p>
-                        )}
-                        <div className="group-meta">
-                          <span>Created {new Date(group.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={e => {
-                          e.stopPropagation();
-                          setSelectedGroup(group.id);
-                          setShowInviteModal(true);
-                        }}
-                        className="group-invite-btn"
-                        title="Invite Members"
-                      >
-                        <UserPlus size={14} />
-                      </button>
+                      <span>{group.title}</span>
                     </div>
-                  ))}
-                  
-                  {groups.length === 0 && (
-                    <div className="empty-state">
-                      <div className="empty-icon">
-                        <Users size={20} />
-                      </div>
-                      <p>No groups yet</p>
-                      <button 
-                        onClick={() => setShowCreateGroupModal(true)} 
-                        className="new-group-btn"
-                      >
-                        <FolderPlus size={14} />
-                        Create your first group
-                    </button>
-                  </div>
+                  ))
+                ) : (
+                  <div className="empty-state">No groups found.</div>
                 )}
               </div>
-              )}
             </div>
           )}
-          
+
+          {/* PREVIOUS NOTES SECTION */}
           <div className="prev-notes">
             <div className="prev-notes-header">
-            <div className="prev-notes-heading">
+              <div className="prev-notes-heading">
                 <span className="section-title">
                   {isGroupMode ? (selectedGroup ? groups.find(g => g.id === selectedGroup)?.title || 'Group Notes' : 'Select a Group') : 'Notes'}
                 </span>
                 {(!isGroupMode || (isGroupMode && selectedGroup)) && (
-                <button
-                  className="new-note-btn"
-                  onClick={handleNewNote}
-                  title="Create New Note"
-                  type="button"
-                >
-                  <Plus size={18} strokeWidth={2.5} />
-                  <span className="btn-text">Create Note</span>
-                </button>
+                  <button
+                    className="new-note-btn"
+                    onClick={handleNewNote}
+                    title="Create New Note"
+                    type="button"
+                  >
+                    <Plus size={18} strokeWidth={2.5} />
+                    <span className="btn-text">Create Note</span>
+                  </button>
                 )}
-            </div>
-            
-              <div className="search-container">
-                <Search className="search-icon" size={16} strokeWidth={2} />
-            <input
-              type="text"
-              className="notes-search-input"
-                  placeholder={`Search ${isGroupMode ? 'group' : ''} notes...`}
-              value={notesFilter}
-              onChange={(e) => handleSearch(e.target.value)}
-                  disabled={isGroupMode && !selectedGroup}
-            />
-              {isSearching && (
-                <div className="search-spinner">
-                  <Spinner size={14} />
-                </div>
-              )}
               </div>
             </div>
-            
             <div className="notes-scroll-wrapper">
-              {notesLoading && !notes.length ? (
-                Array(3).fill(0).map((_, i) => (
-                  <div key={i} className="note-item loading-skeleton" style={{ height: '80px' }} />
-                ))
-              ) : (
-                <>
-                  {notesError && (
-                    <div className="error-message">
-                      <X size={16} />
-                      Failed to load notes. Please try again.
-                    </div>
-                  )}
-                  {(notesFilter ? searchResults : filteredNotes)?.filter(note => note !== null).map((note) => (
-                    <div 
-                      key={note.id} 
+              <div className="notes-list">
+                {filteredNotes.length > 0 ? (
+                  filteredNotes.map(note => (
+                    <div
+                      key={note.id}
                       className={`note-item${activeNote?.id === note.id ? ' active' : ''}`}
                       onClick={() => handleEdit(note)}
                     >
-                      <div className="note-title">
-                        <span>{note.title || 'Untitled'}</span>
-                        {note.updated_at && note.updated_at !== note.created_at && (
-                          <span className="note-edited">(edited)</span>
-                        )}
-                      </div>
-                      <div className="note-meta">
-                          <span>{new Date(note.created_at).toLocaleDateString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                         
-                         
-                          })}</span>
-                          {files.length > 0 && note.id === activeNote?.id && (
-                            <span className="note-files">
-                              <Upload size={14} />
-                              {files.length} {files.length === 1 ? 'file' : 'files'}
-                            </span>
-                          )}
-                      </div>
+                      <span>{note.title || 'Untitled'}</span>
                     </div>
-                  ))}
-                  {filteredNotes.length === 0 && !notesLoading && !notesError && (
-                    <div className="empty-state">
-                      <div className="empty-icon">
-                        <Plus size={20} strokeWidth={2.5} />
-                      </div>
-                      <p>No {isGroupMode ? 'group ' : ''}notes yet</p>
-                      <button className="new-note-btn" onClick={handleNewNote}>
-                        <Plus size={16} strokeWidth={2.5} />
-                        Create your first {isGroupMode ? 'group ' : ''}note
-                      </button>
-                    </div>
-                  )}
-                  {!notesFilter && !isGroupMode && hasMore && (
-                    <button 
-                      className="load-more-btn" 
-                      onClick={handleLoadMore}
-                      disabled={notesLoading}
-                    >
-                      {notesLoading && page > 0 ? (
-                        <span className="loading-spinner" />
-                      ) : (
-                        'Load More Notes'
-                      )}
-                    </button>
-                  )}
-                  {notesLoading && notes.length > 0 && (
-                    <div className="note-item loading-skeleton" style={{ height: '80px' }} />
-                  )}
-                </>
-              )}
+                  ))
+                ) : (
+                  <div className="empty-state">No notes found.</div>
+                )}
+              </div>
             </div>
           </div>
 
-          <style>{`
-            .prev-notes {
-              display: flex;
-              flex-direction: column;
-              height: calc(100vh - 300px);
-              min-height: 200px;
-              overflow: hidden;
-            }
-
-            .prev-notes-header {
-              padding: 16px 16px 0;
-            }
-
-            .prev-notes-heading {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 16px;
-            }
-
-            .search-container {
-              position: relative;
-              margin: 8px 0;
-            }
-
-            .search-icon {
-              position: absolute;
-              left: 8px;
-              top: 50%;
-              transform: translateY(-50%);
-              color: var(--text-secondary);
-              pointer-events: none;
-            }
-
-            .notes-search-input {
-              width: 100%;
-              padding: 8px 12px 8px 32px;
-              border-radius: 6px;
-              border: 1px solid var(--border-color);
-              background: var(--background-dark);
-              color: var(--text-primary);
-              font-size: 14px;
-              transition: all 0.2s ease;
-            }
-
-            .notes-search-input:focus {
-              outline: none;
-              border-color: var(--primary-color);
-              background: var(--background-lighter);
-            }
-
-            .notes-search-input::placeholder {
-              color: var(--text-secondary);
-            }
-
-            .section-title {
-              font-size: 16px;
-              font-weight: 600;
-              color: var(--text-primary);
-            }
-
-            .new-note-btn {
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              padding: 6px 12px;
-              border-radius: 6px;
-              background: var(--primary-color);
-              color: var(--background-dark);
-              border: none;
-              font-size: 14px;
-              font-weight: 500;
-              cursor: pointer;
-              transition: all 0.2s ease;
-            }
-
-            .new-note-btn:hover {
-              background: var(--primary-color-hover);
-            }
-
-            .notes-scroll-wrapper {
-              flex: 1;
-              overflow-y: auto;
-              padding: 16px;
-              margin-right: 2px;
-            }
-
-            .notes-scroll-wrapper::-webkit-scrollbar {
-              width: 4px;
-            }
-
-            .notes-scroll-wrapper::-webkit-scrollbar-track {
-              background: transparent;
-            }
-
-            .notes-scroll-wrapper::-webkit-scrollbar-thumb {
-              background: rgba(71, 229, 132, 0.3);
-              border-radius: 4px;
-            }
-
-            .notes-scroll-wrapper::-webkit-scrollbar-thumb:hover {
-              background: rgba(71, 229, 132, 0.5);
-            }
-          `}</style>
-
-          <div className="sidebar-footer">
-            <div className="action-buttons">
-              <button
-                className="action-button"
-                disabled={!isGroupMode || !selectedGroup}
-                style={{ opacity: isGroupMode && selectedGroup ? 1 : 0.5 }}
-                onClick={handleChatToggle}
-              >
-                <MessageSquare size={20} strokeWidth={2} />
-                <span className="action-label">Chat</span>
-                {(!isGroupMode || !selectedGroup) && (
-                  <div className="tooltip">
-                    {!isGroupMode ? "Available in group mode only" : "Select a group first"}
-                  </div>
-                )}
-              </button>
-              <button
-                className="action-button"
-                onClick={() => {/* AI functionality */}}
-              >
-                <Bot size={20} strokeWidth={2} />
-                <span className="action-label">AI</span>
-              </button>
-              <button
-                className="action-button"
-                onClick={triggerFileUpload}
-                disabled={!activeNote}
-              >
-                <Upload size={20} strokeWidth={2} />
-                <span className="action-label">Upload</span>
-              </button>
-            </div>
-            <div className="user-section">
+          {/* SIDEBAR BOTTOM BAR: AI, CHAT, UPLOAD, NOTIFICATIONS, PROFILE */}
+          <div className="sidebar-bottom-bar" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 0', background: 'var(--background-dark)', borderTop: '1px solid var(--border-color)' }}>
+            <button
+              className="action-button"
+              onClick={() => {/* AI functionality */}}
+              title="AI"
+              style={{ background: 'none', border: 'none' }}
+            >
+              <Bot size={22} />
+            </button>
+            <button
+              className="action-button"
+              disabled={!isGroupMode || !selectedGroup}
+              style={{ opacity: isGroupMode && selectedGroup ? 1 : 0.5, background: 'none', border: 'none' }}
+              onClick={handleChatToggle}
+              title="Chat"
+            >
+              <MessageSquare size={22} />
+            </button>
+            <button
+              className="action-button"
+              onClick={triggerFileUpload}
+              disabled={!activeNote}
+              title="Upload"
+              style={{ background: 'none', border: 'none' }}
+            >
+              <Upload size={22} />
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
               <NotificationsBell userId={user?.id} />
+            </div>
+            <div style={{ position: 'relative' }}>
               <button
                 className="profile-button"
                 onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                title="Profile"
+                style={{ background: 'none', border: 'none', padding: 0 }}
               >
                 <img 
                   src={profileButton} 
                   alt={user?.name || 'Profile'} 
                   className="profile-avatar"
+                  style={{ width: 28, height: 28, borderRadius: '50%' }}
                 />
               </button>
               {showProfileDropdown && (
-                <>
-                  {isSmallScreen && (
-                    <div 
-                      className="profile-dropdown-backdrop"
-                      onClick={() => setShowProfileDropdown(false)}
-                    />
-                  )}
+                <div style={{ position: 'absolute', bottom: 40, right: 0, zIndex: 1000 }}>
                   <div ref={profileRef} className="profile-dropdown">
+                    {/* ...existing profile dropdown content... */}
                     <div className="profile-header">
                       <div className="profile-name">
                         {editingName ? (
                           <div className="edit-name-form">
-                <input
+                            <input
                               type="text"
                               value={newName}
                               onChange={(e) => setNewName(e.target.value)}
@@ -2732,7 +2455,6 @@ function Dashboard() {
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                console.log('Edit button clicked');
                                 handleNameEdit();
                               }}
                               className="edit-name-btn"
@@ -2779,7 +2501,7 @@ function Dashboard() {
                       </button>
                     </div>
                   </div>
-                </>
+                </div>
               )}
             </div>
           </div>

@@ -9,7 +9,7 @@ import design from './assets/design.png';
 const AnimatedBoxes = () => {
   return (
     <section className="animated-boxes-section">
-      <h2 className="section-title">Why Choose WARQ?</h2>
+      <h2 className="section-titles">Why Choose WARQ?</h2>
       
       <div className="animated-boxes-container">
         {/* Wrapper for infinite animation */}

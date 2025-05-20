@@ -34,57 +34,95 @@
 .dashboard-container {
   display: flex;
   height: 100vh;
+  width: 100vw;
   background-color: var(--background-dark);
   color: var(--text-primary);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md);
+  flex-direction: column;
+  overflow-x: hidden;
 }
 
 .dashboard-body {
   display: flex;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  gap: var(--spacing-md);
+  height: 100vh;
+  background-color: var(--background-dark);
+  padding: 0.5rem;
+  box-sizing: border-box;
 }
 
-/* Sidebar Styles */
 .dashboard-sidebar {
-  width: var(--sidebar-width);
-  min-width: var(--sidebar-width);
-  background-color: var(--background-light);
-  display: flex;
-  flex-direction: column;
-  border: 2px solid rgba(71, 229, 132, 0.2);
-  transition: all var(--transition-speed) ease;
-  position: relative;
-  z-index: 100;
-  box-shadow: 0 0 20px rgba(71, 229, 132, 0.1);
-  height: calc(100vh - 32px);
-  overflow: hidden;
+  width: 25vw;
+  max-width: 280px;
+  background-color: var(--background-dark);
+  color: #f0f0f0;
+  padding: 0.5rem;
+  border: 2px solid var(--border-color);
   border-radius: 12px;
+  flex-shrink: 0;
 }
 
-/* WARQ Logo Styles */
-.warq-logo-container {
-  padding: var(--spacing-md) var(--spacing-lg);
+.dashboard-main {
+  flex: 1;
+  width: auto;
+  max-width: calc(100% - 25vw - 0.5rem - 1rem);
+  overflow: hidden;
   background: var(--background-light);
-  border-bottom: 1px solid rgba(71, 229, 132, 0.15);
-  display: flex;
-  align-items: center;
-  height: 64px;
-  gap: var(--spacing-lg);
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid rgba(71, 229, 132, 0.1);
+  margin-left: 0.5rem;
 }
 
-.warq-logo {
-  font-size: 28px;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--primary-color), #2ecc71);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  letter-spacing: -0.5px;
+@media (max-width: 1024px) {
+  .dashboard-sidebar {
+    width: 20vw;
+    max-width: 200px;
+  }
+
+  .dashboard-main {
+    margin-left: 0.5rem;
+    max-width: calc(100% - 20vw - 0.5rem - 1rem);
+  }
+
+  .editor-wrapper {
+    margin: 0.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-body {
+    flex-direction: column;
+    padding: 0;
+  }
+
+  .dashboard-sidebar {
+    width: 100%;
+    max-width: none;
+    height: auto;
+    border-radius: 0;
+    border: none;
+    border-bottom: 2px solid var(--border-color);
+  }
+
+  .dashboard-sidebar.expanded {
+    width: 100%;
+    position: relative;
+    height: auto;
+  }
+
+  .dashboard-main {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    border-radius: 0;
+    border: none;
+    border-top: 1px solid rgba(71, 229, 132, 0.1);
+  }
+
+  .editor-wrapper {
+    margin: 0.25rem;
+    border-radius: 8px;
+  }
 }
 
 /* Header Actions */
@@ -287,12 +325,13 @@
 /* Main Editor Area */
 .dashboard-main {
   flex: 1;
-  height: calc(100vh - 32px);
+  widht: 72vw;
   overflow: hidden;
   background: var(--background-light);
   position: relative;
   border-radius: 12px;
   border: 1px solid rgba(71, 229, 132, 0.1);
+  margin-left: 2vw;
 }
 
 .editor-wrapper {
@@ -430,7 +469,7 @@
   flex-direction: column;
   background: var(--background-light);
   height: calc(100vh - 136px);
-  overflow-y: auto;
+  overflow: hidden; /* Prevent parent scrolling */
   padding: 24px;
 }
 
@@ -440,16 +479,18 @@
   margin: 0;
   padding: var(--spacing-xl);
   background: var(--background-lighter);
-  min-height: 200px;
-  border: none;
-  border-radius: 12px;
+  height: 100%; /* Fill the parent */
+  max-height: 600px; /* Fixed canvas height */
+  aspect-ratio: 16 / 9; /* Optional: Set a canvas aspect ratio (e.g., 16:9) */
   border: 1px solid rgba(71, 229, 132, 0.15);
+  border-radius: 12px;
+  overflow: auto; /* Enable scrolling for both axes if content overflows */
+  display: block; /* Ensure it respects aspect ratio */
 }
 
 .ProseMirror p {
   margin-bottom: 1em;
 }
-
 .ProseMirror h1 {
   font-size: 2em;
   margin: 1.5em 0 0.5em;
@@ -2219,4 +2260,24 @@
 .collaborator-status {
   font-size: 10px;
   color: var(--text-secondary);
+}
+
+.file-cards-row-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 15px;
+  margin-top: 15px;
+  border-top: 1px solid var(--border-color);
+  position: relative;
+  z-index: 10;
+  background: var(--background-dark);
+}
+
+/* Adjust the parent container to manage overflow properly */
+.rich-text-editor {
+  display: flex;
+  flex-direction: column;
+  overflow: visible !important;
+  position: relative;
 }
